@@ -11,7 +11,7 @@
 
 namespace Core::App::Render::Pages {
 
-    class Connecting final : public PagesServiceInstance
+    class Authorization final : public PagesServiceInstance
     {
         using Client = Network::Websocket::Interface::Client;
         using Message = Network::Websocket::Interface::Message;
@@ -24,15 +24,10 @@ namespace Core::App::Render::Pages {
 
         struct
         {
-            UI::Components::Loader::Shared loader_;
-            UI::Components::Text::Shared text_;
-            UI::Components::Text::Shared errorText_;
         } ui;
 
         Client::Shared client_;
         ConnectionState connectionState_ = ConnectionState::ConnectionState_Connecting;
-
-        size_t connectionErrors_ = 0;
     public:
         void Initialise() override;
 
@@ -42,7 +37,7 @@ namespace Core::App::Render::Pages {
 
         [[nodiscard]] Game::MainState GetType() const override
         {
-            return Game::MainState_Connecting;
+            return Game::MainState_Login;
         }
     };
 

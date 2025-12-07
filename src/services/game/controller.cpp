@@ -14,7 +14,16 @@ namespace Core::App::Game
 
     void Controller::OnAllInterfacesLoaded()
     {
+        client_ = IFace().Get<Client>();
 
+        client_->RegisterConnectionStateCallback([this](const ConnectionState & old, const ConnectionState & current) {
+            connectionState_ = current;
+
+            if (connectionState_ == ConnectionState::ConnectionState_Connected)
+            {
+                SetMainState(MainState_Login);
+            }
+        });
     }
 
     void Controller::ProcessTick()
@@ -26,5 +35,8 @@ namespace Core::App::Game
         return mainState_;
     }
 
-
+    void Controller::SetMainState(const MainState & state)
+    {
+        mainState_ = state;
+    }
 }
