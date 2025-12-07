@@ -1,6 +1,5 @@
 #pragma once
 
-#ifdef BUILD_CLIENT
 #include <SFML/Graphics.hpp>
 #include <SFML/Audio.hpp>
 
@@ -74,4 +73,3 @@ public:
 
     Utils::Log::Shared & Log() { return initializer.log; }
 };
-#endif

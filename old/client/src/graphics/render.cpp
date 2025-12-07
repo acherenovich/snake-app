@@ -1,4 +1,3 @@
-#ifdef BUILD_CLIENT
 #include "render.hpp"
 
 #include <utility>
@@ -667,5 +666,3 @@ void Render::DrawGrid()
 
     window.draw(circle);
 }
-
-#endif

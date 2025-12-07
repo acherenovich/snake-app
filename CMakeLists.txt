@@ -4,18 +4,27 @@ project(snake-app LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_FIND_FRAMEWORK NEVER)
+set(SFML_STATIC_LIBRARIES ON)
+set(BUILD_SHARED_LIBS OFF)
 
 add_compile_definitions(BOOST_ASIO_NO_DEPRECATED)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-unused-variable -Wno-unused-parameter -Wno-sign-compare -Wno-deprecated-declarations")
 
-# Выбираем, какие модули snake-shared включать
-set(VSHARED_ENABLE_UTILS ON  CACHE BOOL "" FORCE)
-set(VSHARED_ENABLE_LOGGING ON  CACHE BOOL "" FORCE)
-set(VSHARED_ENABLE_WEBSOCKET     ON CACHE BOOL "" FORCE)
-set(VSHARED_ENABLE_SERVICE_LOADER     ON CACHE BOOL "" FORCE)
-set(VSHARED_ENABLE_COROUTINE     ON CACHE BOOL "" FORCE)
-set(VSHARED_ENABLE_CRYPT     ON CACHE BOOL "" FORCE)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR})
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+# Выбираем, какие модули snake-shared включать
+set(VSHARED_ENABLE_UTILS            ON CACHE BOOL "" FORCE)
+set(VSHARED_ENABLE_LOGGING          ON CACHE BOOL "" FORCE)
+set(VSHARED_ENABLE_WEBSOCKET        ON CACHE BOOL "" FORCE)
+set(VSHARED_ENABLE_SERVICE_LOADER   ON CACHE BOOL "" FORCE)
+set(VSHARED_ENABLE_COROUTINE        ON CACHE BOOL "" FORCE)
+set(VSHARED_ENABLE_CRYPT            ON CACHE BOOL "" FORCE)
+
+
+find_package(OpenGL REQUIRED)
+find_package(SFML 2.6 COMPONENTS network system graphics REQUIRED)
 
 include_directories(
         src
@@ -35,10 +44,10 @@ add_executable(snake-app
         ${SNAKE_SERVER_SOURCES}
 )
 
-# ОДНА строка – и все включённые модули автоматически прилетают
 target_link_libraries(snake-app
         PRIVATE
         snake-shared::all
+        sfml-graphics sfml-system sfml-network
 )
 
 target_compile_features(snake-app PUBLIC cxx_std_23)
