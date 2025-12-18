@@ -54,6 +54,8 @@ namespace Core::App::Render::Pages {
 
         virtual void UpdateScene() = 0;
 
+        virtual void HandleEvent(sf::Event & event, sf::RenderWindow & window) {}
+
         [[nodiscard]] virtual Game::MainState GetType() const = 0;
 
         [[nodiscard]] std::string GetServiceContainerName() const override
