@@ -213,7 +213,8 @@ namespace Core::App::Render::Pages {
                     return;
 
                 Log()->Debug("[Authorization] submit");
-                // позже: отправка на сервер по mode_
+
+                Submit();
             });
 
         // Validation triggers
@@ -224,18 +225,95 @@ namespace Core::App::Render::Pages {
         ui.password2->Events().HookEvent(UI::Components::Input::Event::Changed) =
             std::function([this] { Validate(); });
 
+
+        ui.overlay = UI::Components::Overlay::Create({
+            .enabled = false,
+            .position = { 0.f, 0.f },
+            .size = { Width, Height },
+            .color = sf::Color(0, 0, 0, 160),
+            .blockInput = true,
+            .closeOnClick = false,
+            .enableFadeIn = true,
+            .fadeInDuration = 0.15f,
+        });
+
+        ui.loader = UI::Components::Loader::Create({
+            .center = { center_.x, center_.y + 10.f },
+            .radius = 52.f,
+            .dotRadius = 7.f,
+            .baseAngleDeg = 0.f,
+            .dotsCount = 8
+        });
+
+        ui.loadingText = UI::Components::Text::Create({
+            .text = "Loading...",
+            .font = "assets/fonts/Roboto-Regular.ttf",
+            .characterSize = 22,
+            .position = { center_.x, center_.y + 90.f },
+            .hAlign = UI::Components::Text::HAlign::Center,
+            .vAlign = UI::Components::Text::VAlign::Center,
+            .color = sf::Color(255,255,255,220),
+            .enableFadeIn = true,
+            .fadeInDuration = 0.15f,
+            .enablePulseAlpha = true,
+            .pulseAlphaMin = 0.55f,
+            .pulseAlphaSpeed = 0.7f
+        });
+
         SetMode(Mode::Login);
     }
 
     void Authorization::OnAllInterfacesLoaded()
     {
         client_ = IFace().Get<Client>();
+        gameController_ = IFace().Get<GameController>();
 
-        client_->RegisterConnectionStateCallback(
-            [this](const ConnectionState& /*old*/, const ConnectionState& current) {
-                connectionState_ = current;
-                Validate();
-            });
+        // client_->RegisterConnectionStateCallback(
+        //     [this](const ConnectionState& /*old*/, const ConnectionState& current) {
+        //         connectionState_ = current;
+        //         Validate();
+        //     });
+    }
+
+    void Authorization::Submit()
+    {
+        if (submitting_)
+            return;
+
+        submitting_ = true;
+
+        ui.overlay->SetEnabled(true);
+        ui.loadingText->SetText(mode_ == Mode::Login ? "Logging in..." : "Registering...");
+        ui.loadingText->ResetTimer();
+
+        ui.submit->SetEnabled(false);
+        ui.hint->SetText("");
+
+        if (mode_ == Mode::Login)
+        {
+            gameController_->PerformLogin(ui.login->Value(), ui.password->Value(), true) =
+                [this](const Game::ActionResult<>& result)
+                {
+                    submitting_ = false;
+                    ui.overlay->SetEnabled(false);
+
+                    Validate();
+
+                    if (!result.success)
+                        ui.hint->SetText(result.error);
+                };
+
+            return;
+        }
+
+        // Register (если у тебя есть метод)
+        // gameController_->PerformRegister(...) = [this](...) { ... };
+
+        // если пока нет регистрации — снимаем submitting
+        submitting_ = false;
+        ui.overlay->SetEnabled(false);
+        RefreshModeUI();
+        Validate();
     }
 
     void Authorization::SetMode(const Mode m)
@@ -267,8 +345,6 @@ namespace Core::App::Render::Pages {
 
     void Authorization::Validate()
     {
-        const bool connected = (connectionState_ == ConnectionState::ConnectionState_Connected);
-
         const auto& login = ui.login->Value();
         const auto& pass  = ui.password->Value();
         const auto& pass2 = ui.password2->Value();
@@ -276,12 +352,7 @@ namespace Core::App::Render::Pages {
         bool ok = true;
         std::string hint;
 
-        if (!connected)
-        {
-            ok = false;
-            hint = "No connection";
-        }
-        else if (login.size() < 3)
+        if (login.size() < 3)
         {
             ok = false;
             hint = "Login is too short";
@@ -311,6 +382,11 @@ namespace Core::App::Render::Pages {
 
     void Authorization::HandleEvent(sf::Event& event, sf::RenderWindow& window)
     {
+        ui.overlay->HandleEvent(event, window);
+
+        if (submitting_ && ui.overlay->IsEnabled())
+            return;
+
         ui.login->HandleEvent(event, window);
         ui.password->HandleEvent(event, window);
 
@@ -352,6 +428,17 @@ namespace Core::App::Render::Pages {
 
         for (auto* d : ui.submit->Drawables()) window.draw(*d);
         for (auto* d : ui.hint->Drawables()) window.draw(*d);
+
+        if (ui.overlay->IsEnabled())
+        {
+            ui.overlay->Update(window);
+            ui.loader->Update();
+            ui.loadingText->Update();
+
+            for (auto* d : ui.overlay->Drawables()) window.draw(*d);
+            for (auto* d : ui.loader->Drawables()) window.draw(*d);
+            for (auto* d : ui.loadingText->Drawables()) window.draw(*d);
+        }
     }
 
 } // namespace Core::App::Render::Pages

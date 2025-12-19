@@ -1,5 +1,6 @@
 #include "client.hpp"
 #include "message.hpp"
+#include "headers.hpp"
 
 #include <chrono>
 
@@ -35,6 +36,24 @@ namespace Core::Network::Websocket {
     void WebsocketClient::ProcessTick()
     {
         client_->ProcessTick();
+
+        const auto now = std::chrono::steady_clock::now();
+
+        for (auto it = jobsHandlers_.begin(); it != jobsHandlers_.end(); )
+        {
+            if (it->second.expireAt <= now)
+            {
+                auto callback = std::move(it->second.callback);
+
+                it = jobsHandlers_.erase(it);
+
+                callback({});
+            }
+            else
+            {
+                ++it;
+            }
+        }
     }
 
     void WebsocketClient::OnConnected()
@@ -66,6 +85,14 @@ namespace Core::Network::Websocket {
 
         const boost::json::object & obj = jsonValue.as_object();
 
+        const boost::json::value * headersValue = obj.if_contains("headers");
+        if (headersValue == nullptr || !headersValue->is_object()) {
+            Log()->Warning("Incoming JSON has no string 'headers' field");
+            return;
+        }
+
+        const auto headers = Headers::Create(this, headersValue->as_object());
+
         const boost::json::value * typeValue = obj.if_contains("type");
         if (typeValue == nullptr || !typeValue->is_string()) {
             Log()->Warning("Incoming JSON has no string 'type' field");
@@ -74,22 +101,28 @@ namespace Core::Network::Websocket {
 
         const std::string type = std::string(typeValue->as_string());
 
-        const auto it = messageHandlers_.find(type);
-        if (it == messageHandlers_.end()) {
-            Log()->Warning("No handler registered for type '{}'", type);
-            return;
-        }
-
         const boost::json::value * messageValue = obj.if_contains("message");
         if (messageValue == nullptr || !messageValue->is_object()) {
             Log()->Warning("Incoming JSON has no object 'message' field");
             return;
         }
 
-        const auto message = Message::Create(this, type, messageValue->get_object());
+        const auto message = Message::Create(this, headers, type, messageValue->get_object());
 
-        for (const auto & handler : it->second)
-            handler(message);
+        if (const auto targetJobID = headers->GetTargetJobID(); jobsHandlers_.contains(targetJobID))
+        {
+            jobsHandlers_[targetJobID].callback(message);
+            return;
+        }
+
+        if (const auto it = messageHandlers_.find(type); it != messageHandlers_.end()) {
+            for (const auto & handler : it->second)
+                handler(message);
+
+            return;
+        }
+
+        Log()->Warning("No handler registered for type '{}'", type);
     }
 
     [[nodiscard]] WebsocketClient::ConnectionState WebsocketClient::GetConnectionState() const
@@ -102,12 +135,68 @@ namespace Core::Network::Websocket {
         return connectionError_;
     }
 
-    void WebsocketClient::Send(const std::string & type, const boost::json::object & body)
+    uint64_t WebsocketClient::Send(const std::string & type, const boost::json::object & body, uint64_t targetJobID)
     {
-        if (IsConnected())
+        if (!IsConnected())
         {
-
+            Log()->Warning("Send in disconnected state!");
+            return 0;
         }
+
+        const auto sourceJobID = sourceJobID_++;
+
+        boost::json::object headers = {
+            {"sourceJobId", sourceJobID},
+            {"targetJobId", targetJobID},
+        };
+
+        boost::json::object message = {
+            {"type", type},
+            {"headers", headers},
+            {"message", body},
+        };
+
+        client_->Send(message);
+
+        return sourceJobID;
+    }
+
+    Utils::Task<Interface::Message::Shared> WebsocketClient::Request(const std::string & type, const boost::json::object & body, uint64_t timeout)
+    {
+        if (!IsConnected())
+        {
+            Log()->Warning("Request in disconnected state!");
+            co_return {};
+        }
+
+        const auto sourceJobID = Send(type, body);
+
+        Message::Shared response;
+
+        co_await Utils::AwaitablePromiseTask([=, this, &response](const Utils::TaskResolver & resolver)  {
+            RegisterJobCallback(sourceJobID, [=, &response](const Interface::Message::Shared & message) {
+                response = Message::Impl(message);
+                resolver->Resolve();
+            }, timeout);
+        });
+
+        if (!response)
+        {
+            Log()->Error("Request '{}' timeout", type);
+            co_return {};
+        }
+
+        co_return response;
+    }
+
+    void WebsocketClient::RegisterJobCallback(uint64_t jobID, const MessageCallback & callback, uint64_t timeout)
+    {
+        const auto now = std::chrono::steady_clock::now();
+
+        jobsHandlers_[jobID] = JobHandler{
+            .expireAt = now + std::chrono::milliseconds{ timeout },
+            .callback = callback
+        };
     }
 
     void WebsocketClient::RegisterMessage(const std::string & type, const MessageCallback & callback)

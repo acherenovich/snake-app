@@ -1,15 +1,12 @@
 #pragma once
 
 #include "interfaces/client.hpp"
-#include "client.hpp"
 
 #include <websocket.hpp>
 
 #include <memory>
 #include <string>
 #include <unordered_map>
-
-#include "interfaces/client.hpp"
 
 namespace Core::Network::Websocket {
     namespace Net = Utils::Net::Websocket;
@@ -22,14 +19,23 @@ namespace Core::Network::Websocket {
         public Interface::Client,
         public std::enable_shared_from_this<WebsocketClient>
     {
+        struct JobHandler
+        {
+            std::chrono::steady_clock::time_point expireAt;
+            MessageCallback callback;
+        };
+
         Net::Client::Shared client_;
         std::unordered_map<std::string, std::vector<MessageCallback>> messageHandlers_;
+        std::unordered_map<uint64_t, JobHandler> jobsHandlers_;
         std::vector<ConnectionStateCallback> connectionStateHandlers_;
 
         std::unordered_map<Net::Session::Shared, Client::Shared> clients_;
 
         ConnectionState state_ = ConnectionState_Connecting;
         std::string connectionError_;
+
+        uint64_t sourceJobID_ = 1;
     public:
         using Shared    = std::shared_ptr<WebsocketClient>;
 
@@ -54,7 +60,11 @@ namespace Core::Network::Websocket {
 
         [[nodiscard]] std::string GetConnectionError() const override;
 
-        void Send(const std::string & type, const boost::json::object & body) override;
+        uint64_t Send(const std::string & type, const boost::json::object & body, uint64_t targetJobID = 0) override;
+
+        Utils::Task<Interface::Message::Shared> Request(const std::string & type, const boost::json::object & body, uint64_t timeout) override;
+
+        void RegisterJobCallback(uint64_t jobID, const MessageCallback & callback, uint64_t timeout = 5000);
 
         void RegisterMessage(const std::string & type, const MessageCallback & callback) override;
 

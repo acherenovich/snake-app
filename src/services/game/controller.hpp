@@ -30,6 +30,12 @@ namespace Core::App::Game
 
         void SetMainState(const MainState & state);
 
+        Utils::Task<ActionResult<>> PerformLogin(std::string login, std::string password, bool save) override;
+
+        Utils::Task<ActionResult<>> PerformLogin(std::string token) override;
+
+        Utils::Task<ActionResult<>> PerformRegister(std::string login, std::string password) override;
+
     private:
         std::string GetServiceContainerName() const override
         {

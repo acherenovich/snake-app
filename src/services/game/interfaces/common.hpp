@@ -19,4 +19,20 @@ namespace Core::App::Game
         {MainState_Menu, "menu"},
         {MainState_JoiningSession, "joining_session"},
     }};
+
+    template <class T = void>
+    struct ActionResult
+    {
+        std::string error = "";
+        bool success = false;
+        T result{};
+    };
+
+    template <>
+    struct ActionResult<void>
+    {
+        std::string error = "";
+        bool success = false;
+
+    };
 }

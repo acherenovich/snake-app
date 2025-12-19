@@ -1,5 +1,8 @@
 #include "controller.hpp"
 
+#include "network/websocket/interfaces/response/player_session.hpp"
+
+
 namespace Core::App::Game
 {
     void Controller::Initialise()
@@ -38,5 +41,58 @@ namespace Core::App::Game
     void Controller::SetMainState(const MainState & state)
     {
         mainState_ = state;
+    }
+
+    Utils::Task<ActionResult<>> Controller::PerformLogin(std::string login, std::string password, bool save)
+    {
+        const boost::json::object request = {
+            {"login", login},
+            {"password", password},
+        };
+
+        const auto message = co_await client_->Request("player_session::login", request);
+        if (!message)
+            co_return {.error = "timeout"};
+
+        Network::Websocket::Response::PlayerSessionLogin response(message);
+        if (!response.Success())
+        {
+            co_return {.error = response.Error()};
+        }
+
+        co_return {.success = true};
+    }
+
+    Utils::Task<ActionResult<>> Controller::PerformLogin(std::string token)
+    {
+        const boost::json::object request = {
+            {"token", token},
+        };
+
+        const auto message = co_await client_->Request("player_session::login", request);
+        if (!message)
+            co_return {.error = "timeout"};
+
+        Network::Websocket::Response::PlayerSessionLogin response(message);
+        if (!response.Success())
+        {
+            co_return {.error = response.Error()};
+        }
+
+        co_return {.success = true};
+    }
+
+    Utils::Task<ActionResult<>> Controller::PerformRegister(std::string login, std::string password)
+    {
+        const boost::json::object request = {
+            {"login", login},
+            {"password", password},
+        };
+
+        const auto message = co_await client_->Request("player_session::register", request);
+        if (!message)
+            co_return {.error = "timeout"};
+
+        co_return {};
     }
 }

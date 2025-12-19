@@ -5,8 +5,11 @@
 #include "../components/text/component.hpp"
 #include "../components/button/component.hpp"
 #include "../components/input/component.hpp"
+#include "../components/loader/component.hpp"
+#include "../components/overlay/component.hpp"
 
 #include "network/websocket/interfaces/client.hpp"
+#include "services/game/interfaces/controller.hpp"
 
 #include <SFML/Graphics.hpp>
 
@@ -15,6 +18,7 @@ namespace Core::App::Render::Pages {
     class Authorization final : public PagesServiceInstance
     {
         using Client = Network::Websocket::Interface::Client;
+        using GameController = Game::Interface::Controller;
         using ConnectionState = Network::Websocket::Interface::Client::ConnectionState;
 
         enum class Mode
@@ -38,12 +42,20 @@ namespace Core::App::Render::Pages {
 
             UI::Components::Button::Shared submit;
             UI::Components::Text::Shared hint;
+
+            // NEW
+            UI::Components::Overlay::Shared overlay;
+            UI::Components::Loader::Shared loader;
+            UI::Components::Text::Shared loadingText;
         } ui;
+
+        bool submitting_ { false };
 
         Mode mode_ { Mode::Login };
 
         Client::Shared client_;
-        ConnectionState connectionState_ = ConnectionState::ConnectionState_Connecting;
+        GameController::Shared gameController_;
+        // ConnectionState connectionState_ = ConnectionState::ConnectionState_Connecting;
 
     public:
         void Initialise() override;
@@ -58,6 +70,7 @@ namespace Core::App::Render::Pages {
         }
 
     private:
+        void Submit();
         void SetMode(Mode m);
         void RefreshModeUI();
         void Validate();
