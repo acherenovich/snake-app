@@ -1,20 +1,54 @@
 cmake_minimum_required(VERSION 3.27)
+
+# CMake 4.x: FindBoost removed by default, allow legacy FindBoost in subprojects
+cmake_policy(SET CMP0167 OLD)
+
 project(snake-app LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_FIND_FRAMEWORK NEVER)
-set(SFML_STATIC_LIBRARIES ON)
-set(BUILD_SHARED_LIBS OFF)
 
 add_compile_definitions(BOOST_ASIO_NO_DEPRECATED)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-unused-variable -Wno-unused-parameter -Wno-sign-compare -Wno-deprecated-declarations")
+set(CMAKE_CXX_FLAGS
+        "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-unused-variable -Wno-unused-parameter -Wno-sign-compare -Wno-deprecated-declarations"
+)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR})
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR})
 
-# Выбираем, какие модули snake-shared включать
+# ===============================
+# Platform-specific setup
+# ===============================
+if (APPLE)
+    set(CMAKE_FIND_FRAMEWORK FIRST)
+
+    list(PREPEND CMAKE_PREFIX_PATH
+            "/opt/homebrew"
+            "/usr/local"
+    )
+
+    set(SFML_STATIC_LIBRARIES OFF)
+else()
+    # Windows / MinGW
+    set(CMAKE_FIND_FRAMEWORK NEVER)
+    set(SFML_STATIC_LIBRARIES ON)
+
+    # SFML
+    list(PREPEND CMAKE_PREFIX_PATH "C:/mingw64")
+
+    # MSYS2 MinGW64 deps: OpenSSL + Boost
+    list(PREPEND CMAKE_PREFIX_PATH "C:/msys64/mingw64")
+
+    set(OPENSSL_ROOT_DIR "C:/msys64/mingw64" CACHE PATH "" FORCE)
+    set(BOOST_ROOT       "C:/msys64/mingw64" CACHE PATH "" FORCE)
+endif()
+
+set(BUILD_SHARED_LIBS OFF)
+
+# ===============================
+# snake-shared options
+# ===============================
 set(VSHARED_ENABLE_UTILS            ON CACHE BOOL "" FORCE)
 set(VSHARED_ENABLE_LOGGING          ON CACHE BOOL "" FORCE)
 set(VSHARED_ENABLE_WEBSOCKET        ON CACHE BOOL "" FORCE)
@@ -22,9 +56,15 @@ set(VSHARED_ENABLE_SERVICE_LOADER   ON CACHE BOOL "" FORCE)
 set(VSHARED_ENABLE_COROUTINE        ON CACHE BOOL "" FORCE)
 set(VSHARED_ENABLE_CRYPT            ON CACHE BOOL "" FORCE)
 
-
+# ===============================
+# Dependencies
+# ===============================
 find_package(OpenGL REQUIRED)
-find_package(SFML 2.6 COMPONENTS network system graphics REQUIRED)
+
+find_package(SFML 2.6
+        COMPONENTS system network graphics
+        CONFIG REQUIRED
+)
 
 include_directories(
         src
@@ -47,7 +87,9 @@ add_executable(snake-app
 target_link_libraries(snake-app
         PRIVATE
         snake-shared::all
-        sfml-graphics sfml-system sfml-network
+        sfml-graphics
+        sfml-system
+        sfml-network
 )
 
 target_compile_features(snake-app PUBLIC cxx_std_23)

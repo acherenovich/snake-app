@@ -1,5 +1,7 @@
 #include "component.hpp"
 
+#include <cmath>
+
 namespace Core::App::Render::UI::Components {
     Loader::Loader()
     {
