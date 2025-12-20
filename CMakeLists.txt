@@ -1,8 +1,5 @@
 cmake_minimum_required(VERSION 3.27)
 
-# CMake 4.x: FindBoost removed by default, allow legacy FindBoost in subprojects
-cmake_policy(SET CMP0167 OLD)
-
 project(snake-app LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
