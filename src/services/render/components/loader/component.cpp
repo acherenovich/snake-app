@@ -51,7 +51,7 @@ namespace Core::App::Render::UI::Components {
         for (int i = 0; i < config_.dotsCount; ++i)
         {
             const float phase  = 360.f * static_cast<float>(i) / static_cast<float>(config_.dotsCount);
-            const float angle  = (config_.baseAngleDeg + phase) * static_cast<float>(M_PI) / 180.f;
+            const float angle  = (config_.baseAngleDeg + phase) * static_cast<float>(Pi) / 180.f;
 
             const sf::Vector2f pos {
                 center.x + std::cos(angle) * config_.radius,

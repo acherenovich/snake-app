@@ -4,6 +4,11 @@
 
 #include <SFML/Graphics.hpp>
 
+#include <numbers>
+
+constexpr float Pi = std::numbers::pi_v<float>;
+
+
 namespace Core::App::Render::UI::Components {
     class BaseComponent
     {

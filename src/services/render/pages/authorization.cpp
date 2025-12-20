@@ -2,7 +2,7 @@
 
 namespace Core::App::Render::Pages {
 
-    [[maybe_unused]] __used Utils::Service::Loader::Add<Authorization> AuthorizationPage(PagesLoader());
+    [[maybe_unused]] [[gnu::used]] Utils::Service::Loader::Add<Authorization> AuthorizationPage(PagesLoader());
 
     // ==============================
     // Styles

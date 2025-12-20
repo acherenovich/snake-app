@@ -39,6 +39,8 @@ else()
 
     set(OPENSSL_ROOT_DIR "C:/msys64/mingw64" CACHE PATH "" FORCE)
     set(BOOST_ROOT       "C:/msys64/mingw64" CACHE PATH "" FORCE)
+
+    add_compile_options(-Wa,-mbig-obj)
 endif()
 
 set(BUILD_SHARED_LIBS OFF)
