@@ -3,6 +3,7 @@
 #include "interfaces/controller.hpp"
 
 #include "network/websocket/interfaces/client.hpp"
+#include "components/local_storage/interfaces/storage.hpp"
 
 namespace Core::App::Game
 {
@@ -11,10 +12,13 @@ namespace Core::App::Game
         using Client = Network::Websocket::Interface::Client;
         using Message = Network::Websocket::Interface::Message;
         using ConnectionState = Network::Websocket::Interface::Client::ConnectionState;
+        using Storage = Components::LocalStorage::Interface::Storage;
 
         Client::Shared client_;
         ConnectionState connectionState_ = ConnectionState::ConnectionState_Connecting;
         MainState mainState_ = MainState_Connecting;
+
+        Storage::Shared localStorage_;
     public:
         using Shared = std::shared_ptr<Controller>;
 

@@ -5,6 +5,9 @@ project(snake-app LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_FIND_FRAMEWORK NEVER)
+set(SFML_STATIC_LIBRARIES ON)
+set(BUILD_SHARED_LIBS OFF)
 
 add_compile_definitions(BOOST_ASIO_NO_DEPRECATED)
 set(CMAKE_CXX_FLAGS
@@ -18,20 +21,12 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR})
 # Platform-specific setup
 # ===============================
 if (APPLE)
-    set(CMAKE_FIND_FRAMEWORK FIRST)
-
     list(PREPEND CMAKE_PREFIX_PATH
             "/opt/homebrew"
             "/usr/local"
     )
-
-    set(SFML_STATIC_LIBRARIES OFF)
 else()
     # Windows / MinGW
-    set(CMAKE_FIND_FRAMEWORK NEVER)
-    set(SFML_STATIC_LIBRARIES ON)
-
-    # SFML
     list(PREPEND CMAKE_PREFIX_PATH "C:/mingw64")
 
     # MSYS2 MinGW64 deps: OpenSSL + Boost

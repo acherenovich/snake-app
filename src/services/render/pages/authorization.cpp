@@ -114,6 +114,20 @@ namespace Core::App::Render::Pages {
         cfg.maxLength = 64;
         cfg.allowNewLine = false;
 
+        if (password)
+        {
+            cfg.allowSpaces = false;
+        }
+        else
+        {
+            cfg.allowSpaces = false;
+            cfg.allowUnderscore = false;
+            cfg.allowDash = false;
+            cfg.allowDot = false;
+            cfg.allowAt = false;
+            cfg.allowOther = false;
+        }
+
         return cfg;
     }
 
@@ -267,15 +281,27 @@ namespace Core::App::Render::Pages {
     {
         client_ = IFace().Get<Client>();
         gameController_ = IFace().Get<GameController>();
-
-        // client_->RegisterConnectionStateCallback(
-        //     [this](const ConnectionState& /*old*/, const ConnectionState& current) {
-        //         connectionState_ = current;
-        //         Validate();
-        //     });
+        localStorage_ = IFace().Get<Storage>();
     }
 
-    void Authorization::Submit()
+    void Authorization::TryLoginToken()
+    {
+        if (loginTokenTried)
+            return;
+
+        loginTokenTried = true;
+
+        if (!localStorage_->Has("snake_user_token"))
+            return;
+
+        const auto tokenValue = localStorage_->Get("snake_user_token");
+        if (!tokenValue.is_string())
+            return;
+
+        Submit( tokenValue.as_string().c_str());
+    }
+
+    void Authorization::Submit(const std::string & token)
     {
         if (submitting_)
             return;
@@ -288,6 +314,23 @@ namespace Core::App::Render::Pages {
 
         ui.submit->SetEnabled(false);
         ui.hint->SetText("");
+
+        if (!token.empty())
+        {
+            gameController_->PerformLogin(token) =
+                [this](const Game::ActionResult<>& result)
+                {
+                    submitting_ = false;
+                    ui.overlay->SetEnabled(false);
+
+                    Validate();
+
+                    if (!result.success)
+                        ui.hint->SetText(result.error);
+                };
+
+            return;
+        }
 
         if (mode_ == Mode::Login)
         {
@@ -306,10 +349,23 @@ namespace Core::App::Render::Pages {
             return;
         }
 
-        // Register (если у тебя есть метод)
-        // gameController_->PerformRegister(...) = [this](...) { ... };
+        if (mode_ == Mode::Register)
+        {
+            gameController_->PerformRegister(ui.login->Value(), ui.password->Value()) =
+                [this](const Game::ActionResult<>& result)
+                {
+                    submitting_ = false;
+                    ui.overlay->SetEnabled(false);
 
-        // если пока нет регистрации — снимаем submitting
+                    Validate();
+
+                    if (!result.success)
+                        ui.hint->SetText(result.error);
+                };
+
+            return;
+        }
+
         submitting_ = false;
         ui.overlay->SetEnabled(false);
         RefreshModeUI();
@@ -400,6 +456,8 @@ namespace Core::App::Render::Pages {
 
     void Authorization::UpdateScene()
     {
+        TryLoginToken();
+
         auto& window = GetController()->Window();
         if (!window.isOpen())
             return;

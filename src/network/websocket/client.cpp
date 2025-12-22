@@ -78,6 +78,8 @@ namespace Core::Network::Websocket {
 
     void WebsocketClient::OnMessage(const boost::json::value & jsonValue)
     {
+        Log()->Debug("Message: {}", serialize(jsonValue));
+
         if (!jsonValue.is_object()) {
             Log()->Warning("Incoming JSON is not an object");
             return;
@@ -99,7 +101,7 @@ namespace Core::Network::Websocket {
             return;
         }
 
-        const std::string type = std::string(typeValue->as_string());
+        const auto type = std::string(typeValue->as_string());
 
         const boost::json::value * messageValue = obj.if_contains("message");
         if (messageValue == nullptr || !messageValue->is_object()) {
@@ -112,6 +114,7 @@ namespace Core::Network::Websocket {
         if (const auto targetJobID = headers->GetTargetJobID(); jobsHandlers_.contains(targetJobID))
         {
             jobsHandlers_[targetJobID].callback(message);
+            jobsHandlers_.erase(targetJobID);
             return;
         }
 

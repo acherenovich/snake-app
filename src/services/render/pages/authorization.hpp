@@ -10,6 +10,7 @@
 
 #include "network/websocket/interfaces/client.hpp"
 #include "services/game/interfaces/controller.hpp"
+#include "components/local_storage/interfaces/storage.hpp"
 
 #include <SFML/Graphics.hpp>
 
@@ -20,6 +21,7 @@ namespace Core::App::Render::Pages {
         using Client = Network::Websocket::Interface::Client;
         using GameController = Game::Interface::Controller;
         using ConnectionState = Network::Websocket::Interface::Client::ConnectionState;
+        using Storage = Components::LocalStorage::Interface::Storage;
 
         enum class Mode
         {
@@ -55,8 +57,9 @@ namespace Core::App::Render::Pages {
 
         Client::Shared client_;
         GameController::Shared gameController_;
-        // ConnectionState connectionState_ = ConnectionState::ConnectionState_Connecting;
+        Storage::Shared localStorage_;
 
+        bool loginTokenTried { false };
     public:
         void Initialise() override;
         void OnAllInterfacesLoaded() override;
@@ -70,7 +73,8 @@ namespace Core::App::Render::Pages {
         }
 
     private:
-        void Submit();
+        void TryLoginToken();
+        void Submit(const std::string & token = "");
         void SetMode(Mode m);
         void RefreshModeUI();
         void Validate();

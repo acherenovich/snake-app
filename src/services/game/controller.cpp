@@ -18,9 +18,15 @@ namespace Core::App::Game
     void Controller::OnAllInterfacesLoaded()
     {
         client_ = IFace().Get<Client>();
+        localStorage_ = IFace().Get<Storage>();
 
         client_->RegisterConnectionStateCallback([this](const ConnectionState & old, const ConnectionState & current) {
             connectionState_ = current;
+
+            if (connectionState_ == ConnectionState::ConnectionState_Connecting)
+            {
+                SetMainState(MainState_Connecting);
+            }
 
             if (connectionState_ == ConnectionState::ConnectionState_Connected)
             {
@@ -54,11 +60,18 @@ namespace Core::App::Game
         if (!message)
             co_return {.error = "timeout"};
 
-        Network::Websocket::Response::PlayerSessionLogin response(message);
+        Network::Websocket::Response::PlayerSession response(message);
         if (!response.Success())
         {
             co_return {.error = response.Error()};
         }
+
+        if (save)
+            localStorage_->Save("snake_user_token", boost::json::string(response.Token().value()));
+        else
+            localStorage_->Delete("snake_user_token");
+
+        SetMainState(MainState_Menu);
 
         co_return {.success = true};
     }
@@ -73,11 +86,15 @@ namespace Core::App::Game
         if (!message)
             co_return {.error = "timeout"};
 
-        Network::Websocket::Response::PlayerSessionLogin response(message);
+        Network::Websocket::Response::PlayerSession response(message);
         if (!response.Success())
         {
             co_return {.error = response.Error()};
         }
+
+        localStorage_->Save("snake_user_token", boost::json::string(response.Token().value()));
+
+        SetMainState(MainState_Menu);
 
         co_return {.success = true};
     }
@@ -93,6 +110,16 @@ namespace Core::App::Game
         if (!message)
             co_return {.error = "timeout"};
 
-        co_return {};
+        Network::Websocket::Response::PlayerSession response(message);
+        if (!response.Success())
+        {
+            co_return {.error = response.Error()};
+        }
+
+        localStorage_->Save("snake_user_token", boost::json::string(response.Token().value()));
+
+        SetMainState(MainState_Menu);
+
+        co_return {.success = true};
     }
 }
