@@ -11,6 +11,7 @@ namespace Core::App::Game
         MainState_Login,
         MainState_Menu,
         MainState_JoiningSession,
+        MainState_Playing,
     };
 
     static DoubleMap<MainState> MainStateMap {{
@@ -18,6 +19,7 @@ namespace Core::App::Game
         {MainState_Login, "login"},
         {MainState_Menu, "menu"},
         {MainState_JoiningSession, "joining_session"},
+        {MainState_Playing, "playing"},
     }};
 
     template <class T = void>

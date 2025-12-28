@@ -39,7 +39,7 @@ namespace Core::App::Render::Pages {
 
     class PagesServiceInstance : public Utils::Service::Instance, public PagesServiceContainer {
     protected:
-        Game::Interface::Controller::Shared game_ {};
+        // Game::Interface::Controller::Shared game_ {};
     public:
         using Shared = std::shared_ptr<PagesServiceInstance>;
 
@@ -47,10 +47,10 @@ namespace Core::App::Render::Pages {
 
         ~PagesServiceInstance() override = default;
 
-        void OnAllInterfacesLoaded() override
-        {
-            game_ = IFace().Get<Game::Interface::Controller>();
-        }
+        // void OnAllInterfacesLoaded() override
+        // {
+        //     game_ = IFace().Get<Game::Interface::Controller>();
+        // }
 
         virtual void UpdateScene() = 0;
 

@@ -1,6 +1,8 @@
 #pragma once
 
 #include "common.hpp"
+#include "game_client.hpp"
+
 #include "coroutine.hpp"
 
 namespace Core::App::Game
@@ -19,6 +21,10 @@ namespace Core::App::Game
             virtual Utils::Task<ActionResult<>> PerformLogin(std::string token) = 0;
 
             virtual Utils::Task<ActionResult<>> PerformRegister(std::string login, std::string password) = 0;
+
+            virtual Utils::Task<ActionResult<>> JoinSession(uint32_t sessionID) = 0;
+
+            [[nodiscard]] virtual GameClient::Shared GetCurrentGameClient() const = 0;
         };
     }
 }

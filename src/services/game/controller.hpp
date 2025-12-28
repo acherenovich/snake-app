@@ -5,6 +5,8 @@
 #include "network/websocket/interfaces/client.hpp"
 #include "components/local_storage/interfaces/storage.hpp"
 
+#include "game_client.hpp"
+
 namespace Core::App::Game
 {
     class Controller final : public Interface::Controller, public std::enable_shared_from_this<Controller>
@@ -19,6 +21,8 @@ namespace Core::App::Game
         MainState mainState_ = MainState_Connecting;
 
         Storage::Shared localStorage_;
+
+        GameClient::Shared gameClient_;
     public:
         using Shared = std::shared_ptr<Controller>;
 
@@ -40,6 +44,9 @@ namespace Core::App::Game
 
         Utils::Task<ActionResult<>> PerformRegister(std::string login, std::string password) override;
 
+        Utils::Task<ActionResult<>> JoinSession(uint32_t sessionID) override;
+
+        Interface::GameClient::Shared GetCurrentGameClient() const override;
     private:
         std::string GetServiceContainerName() const override
         {

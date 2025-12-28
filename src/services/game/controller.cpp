@@ -37,6 +37,8 @@ namespace Core::App::Game
 
     void Controller::ProcessTick()
     {
+        if (gameClient_)
+            gameClient_->ProcessTick();
     }
 
     MainState Controller::GetMainState() const
@@ -121,5 +123,19 @@ namespace Core::App::Game
         SetMainState(MainState_Menu);
 
         co_return {.success = true};
+    }
+
+    Utils::Task<ActionResult<>> Controller::JoinSession(uint32_t sessionID)
+    {
+        SetMainState(MainState_Playing);
+
+        gameClient_ = GameClient::Create(this, sessionID);
+
+        co_return {.success = true};
+    }
+
+    Interface::GameClient::Shared Controller::GetCurrentGameClient() const
+    {
+        return gameClient_;
     }
 }
