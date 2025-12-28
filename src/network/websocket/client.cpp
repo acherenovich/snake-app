@@ -10,7 +10,7 @@ namespace Core::Network::Websocket {
     void WebsocketClient::Initialise()
     {
         Net::ClientConfig config;
-        config.host   = "0.0.0.0";
+        config.host   = "127.0.0.1";
         config.port      = 9100;
         config.mode      = Net::Mode::Json;
         config.ioThreads = 2;
