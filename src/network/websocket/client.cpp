@@ -1,21 +1,36 @@
+// ==== Изменения: добавляем keep-alive отправку каждые 10 секунд ====
+//
+// Идея:
+// 1) Храним время последней отправки keep-alive (std::chrono::steady_clock::time_point).
+// 2) В ProcessTick() проверяем: если клиент подключён и прошло >= 10 секунд,
+//    отправляем JSON-сообщение с типом "keep_alive" (или "ping" — как тебе нужно).
+// 3) При переподключении сбрасываем таймер, чтобы не спамить сразу.
+//
+
 #include "client.hpp"
 #include "message.hpp"
 #include "headers.hpp"
 
 #include <chrono>
-
 #include "utils.hpp"
 
 namespace Core::Network::Websocket {
     using namespace std::chrono_literals;
+
+    // ======== Добавь в client.hpp в приватную секцию: ========
+    //
+    // std::chrono::steady_clock::time_point lastKeepAlive_ = std::chrono::steady_clock::now();
+    //
+    // =========================================================
 
     void WebsocketClient::Initialise()
     {
         auto host = Utils::Env("WS_HOST");
         if (host.empty())
             host = "127.0.0.1";
+
         Net::ClientConfig config;
-        config.host      =  host;
+        config.host      = host;
         config.port      = 9100;
         config.mode      = Net::Mode::Json;
         config.ioThreads = 2;
@@ -24,12 +39,14 @@ namespace Core::Network::Websocket {
         client_ = Net::Client::Create(config, shared_from_this(), Log());
 
         Log()->Debug("Server created on {}:{}", config.host, config.port);
+
+        // Инициализация keep alive таймера
+        lastKeepAlive_ = std::chrono::steady_clock::now();
     }
 
     void WebsocketClient::OnAllServicesLoaded()
     {
         Log()->Debug("OnAllServicesLoaded()");
-
         IFace().Register<Interface::Client>(shared_from_this());
     }
 
@@ -44,6 +61,25 @@ namespace Core::Network::Websocket {
 
         const auto now = std::chrono::steady_clock::now();
 
+        // ======== KEEP ALIVE каждые 10 секунд ========
+        if (IsConnected())
+        {
+            if ((now - lastKeepAlive_) >= 10s)
+            {
+                lastKeepAlive_ = now;
+
+                // Минимальное keep-alive сообщение
+                boost::json::object body = {
+                    {"ts", std::chrono::duration_cast<std::chrono::milliseconds>(
+                               std::chrono::system_clock::now().time_since_epoch()).count()}
+                };
+
+                Send("keep_alive", body);
+            }
+        }
+        // ===========================================
+
+        // ======== обработка таймаутов job callbacks ========
         for (auto it = jobsHandlers_.begin(); it != jobsHandlers_.end(); )
         {
             if (it->second.expireAt <= now)
@@ -64,20 +100,21 @@ namespace Core::Network::Websocket {
     void WebsocketClient::OnConnected()
     {
         Log()->Debug("Client connected:");
-
+        lastKeepAlive_ = std::chrono::steady_clock::now(); // сброс таймера
         SetState(ConnectionState_Connected);
     }
 
     void WebsocketClient::OnDisconnected()
     {
         Log()->Debug("Client disconnected");
-
+        lastKeepAlive_ = std::chrono::steady_clock::now(); // сброс таймера
         SetState(ConnectionState_Connecting);
     }
 
     void WebsocketClient::OnConnectionError(const std::string &error, bool reconnect)
     {
         connectionError_ = error;
+        lastKeepAlive_ = std::chrono::steady_clock::now(); // сброс таймера
         SetState(ConnectionState_ConnectingFailed);
     }
 
@@ -227,4 +264,4 @@ namespace Core::Network::Websocket {
             handler(prevState, state);
     }
 
-} // namespace Core::Servers::Websocket
+} // namespace Core::Network::Websocket

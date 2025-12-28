@@ -200,6 +200,8 @@ namespace Core::App::Game
         if (!ParseHeader(std::span(data.data(), data.size()), header))
         {
             badPacketsDropped_++;
+            Log()->Warning("[Net] Dropped packet: ParseHeader failed. bytes={} dropped={}",
+                           data.size(), badPacketsDropped_);
             net_.pendingFullRequest = true;
             return;
         }
@@ -209,6 +211,8 @@ namespace Core::App::Game
         if (totalNeed > data.size())
         {
             badPacketsDropped_++;
+            Log()->Warning("[Net] Dropped packet: payloadBytes out of bounds. bytes={} payloadBytes={} need={} dropped={} type={} seq={}",
+                           data.size(), header.payloadBytes, totalNeed, badPacketsDropped_, header.type, header.seq);
             net_.pendingFullRequest = true;
             return;
         }
@@ -234,6 +238,9 @@ namespace Core::App::Game
             {
                 if (header.seq != net_.lastServerSeq + 1)
                 {
+                    Log()->Warning("[Net] Server seq mismatch: got={} expected={} -> request full update",
+                                   header.seq, net_.lastServerSeq + 1);
+
                     net_.pendingFullRequest = true;
                     net_.lastServerSeq = header.seq;
                 }
@@ -359,6 +366,8 @@ namespace Core::App::Game
         net_.pendingFullRequest = true;
         net_.pendingFullRequestAllSegments = true; // IMPORTANT: player rebuild
         awaitingPlayerRebuild_ = true;
+
+        Log()->Warning("[Net] ForceFullUpdateRequest() -> pendingFullRequestAllSegments=true awaitingPlayerRebuild=true");
     }
 
     DebugInfo GameClient::GetDebugInfo() const
@@ -491,6 +500,8 @@ namespace Core::App::Game
         if (ss.experience > maxReasonableExp || ss.totalSegments == 0 || ss.totalSegments > maxReasonableSegments)
         {
             badPacketsDropped_++;
+            Log()->Warning("[Net] Dropped snake update: insane experience/segments. entityID={} exp={} totalSegments={} dropped={} seq={}",
+                           entityID, ss.experience, ss.totalSegments, badPacketsDropped_, net_.lastServerSeq);
             net_.pendingFullRequest = true;
             return;
         }
@@ -498,6 +509,8 @@ namespace Core::App::Game
         if (samples.size() > static_cast<std::size_t>(ss.totalSegments))
         {
             badPacketsDropped_++;
+            Log()->Warning("[Net] Dropped snake update: samples > totalSegments. entityID={} sampleCount={} totalSegments={} dropped={} seq={}",
+                           entityID, samples.size(), ss.totalSegments, badPacketsDropped_, net_.lastServerSeq);
             net_.pendingFullRequest = true;
             return;
         }
@@ -540,6 +553,8 @@ namespace Core::App::Game
             constexpr float driftThreshold = 120.0f;
             if (!ValidateSamples(snake->Segments(), samples, driftThreshold))
             {
+                Log()->Warning("[Net] Snake drift validation failed -> request full update. entityID={} sampleCount={} segCount={}",
+                               entityID, samples.size(), snake->Segments().size());
                 net_.pendingFullRequest = true;
             }
         }
@@ -555,14 +570,14 @@ namespace Core::App::Game
         if (!ReadFullUpdateHeader(reader, fh))
         {
             badPacketsDropped_++;
+            Log()->Warning("[Net] Dropped full update: ReadFullUpdateHeader failed. dropped={} seq={}",
+                           badPacketsDropped_, net_.lastServerSeq);
             net_.pendingFullRequest = true;
             return;
         }
 
         playerEntityID_ = fh.playerEntityID;
 
-        // If we requested all segments, we expect player snake to arrive fully in this update.
-        // We'll clear awaitingPlayerRebuild_ once we actually build player segments exactly.
         bool playerBuiltExact = false;
 
         while (!reader.End())
@@ -570,6 +585,7 @@ namespace Core::App::Game
             EntityEntryHeader entry{};
             if (!reader.ReadPod(entry))
             {
+                Log()->Warning("[Net] Full update ended early: failed to read EntityEntryHeader");
                 break;
             }
 
@@ -579,14 +595,17 @@ namespace Core::App::Game
                 if (!reader.ReadPod(ss))
                 {
                     badPacketsDropped_++;
+                    Log()->Warning("[Net] Dropped full update: failed to read SnakeState. entityID={} dropped={} seq={}",
+                                   entry.entityID, badPacketsDropped_, net_.lastServerSeq);
                     net_.pendingFullRequest = true;
                     return;
                 }
 
-                // SANITY for full update
                 if (ss.totalSegments == 0 || ss.sampleCount > ss.totalSegments)
                 {
                     badPacketsDropped_++;
+                    Log()->Warning("[Net] Dropped full update: invalid SnakeState fields. entityID={} totalSegments={} sampleCount={} dropped={} seq={}",
+                                   entry.entityID, ss.totalSegments, ss.sampleCount, badPacketsDropped_, net_.lastServerSeq);
                     net_.pendingFullRequest = true;
                     return;
                 }
@@ -595,6 +614,8 @@ namespace Core::App::Game
                 if (samples.size() != ss.sampleCount)
                 {
                     badPacketsDropped_++;
+                    Log()->Warning("[Net] Dropped full update: samples read mismatch. entityID={} expectedSamples={} gotSamples={} dropped={} seq={}",
+                                   entry.entityID, ss.sampleCount, samples.size(), badPacketsDropped_, net_.lastServerSeq);
                     net_.pendingFullRequest = true;
                     return;
                 }
@@ -603,7 +624,6 @@ namespace Core::App::Game
                 s->SetEntityID(entry.entityID);
                 s->NetApplyExperience(ss.experience);
 
-                // Build initial segments (exact when sampleCount == totalSegments)
                 std::vector<sf::Vector2f> segs;
                 segs.reserve(ss.totalSegments);
 
@@ -630,10 +650,11 @@ namespace Core::App::Game
                         segs.emplace_back(ss.headX, ss.headY);
                 }
 
-                // SANITY: avoid insane growth from corrupted ss.totalSegments
                 if (segs.size() > 20000)
                 {
                     badPacketsDropped_++;
+                    Log()->Warning("[Net] Dropped full update: insane seg count after build. entityID={} segs={} totalSegments={} dropped={} seq={}",
+                                   entry.entityID, segs.size(), ss.totalSegments, badPacketsDropped_, net_.lastServerSeq);
                     net_.pendingFullRequest = true;
                     return;
                 }
@@ -661,6 +682,8 @@ namespace Core::App::Game
                 if (!reader.ReadPod(fs))
                 {
                     badPacketsDropped_++;
+                    Log()->Warning("[Net] Dropped full update: failed to read FoodState. entityID={} dropped={} seq={}",
+                                   entry.entityID, badPacketsDropped_, net_.lastServerSeq);
                     net_.pendingFullRequest = true;
                     return;
                 }
@@ -675,8 +698,9 @@ namespace Core::App::Game
             }
             else
             {
-                // unknown type
                 badPacketsDropped_++;
+                Log()->Warning("[Net] Dropped full update: unknown entity type. type={} entityID={} dropped={} seq={}",
+                               static_cast<std::uint32_t>(entry.type), entry.entityID, badPacketsDropped_, net_.lastServerSeq);
                 net_.pendingFullRequest = true;
                 return;
             }
@@ -684,15 +708,18 @@ namespace Core::App::Game
 
         if (awaitingPlayerRebuild_)
         {
-            // if we requested all segments but didn't get exact player rebuild -> request again
             if (!playerBuiltExact)
             {
+                Log()->Warning("[Net] FullUpdate(allSegments) incomplete: player not built exact -> request again. playerID={}",
+                               playerEntityID_);
                 net_.pendingFullRequest = true;
                 net_.pendingFullRequestAllSegments = true;
             }
             else
             {
                 awaitingPlayerRebuild_ = false;
+                Log()->Warning("[Net] FullUpdate(allSegments) OK: player rebuilt exact. playerID={} segs={}",
+                               playerEntityID_, clientSnake_ ? clientSnake_->Segments().size() : 0);
             }
         }
     }
@@ -706,6 +733,7 @@ namespace Core::App::Game
             EntityEntryHeader entry{};
             if (!reader.ReadPod(entry))
             {
+                Log()->Warning("[Net] Partial update ended early: failed to read EntityEntryHeader");
                 break;
             }
 
@@ -723,14 +751,17 @@ namespace Core::App::Game
                 if (!reader.ReadPod(ss))
                 {
                     badPacketsDropped_++;
+                    Log()->Warning("[Net] Dropped partial update: failed to read SnakeState. entityID={} dropped={} seq={}",
+                                   entry.entityID, badPacketsDropped_, net_.lastServerSeq);
                     net_.pendingFullRequest = true;
                     return;
                 }
 
-                // SANITY: partial update should never claim insane samples
                 if (ss.totalSegments == 0 || ss.sampleCount > ss.totalSegments || ss.sampleCount > 12)
                 {
                     badPacketsDropped_++;
+                    Log()->Warning("[Net] Dropped partial update: invalid SnakeState fields. entityID={} totalSegments={} sampleCount={} dropped={} seq={}",
+                                   entry.entityID, ss.totalSegments, ss.sampleCount, badPacketsDropped_, net_.lastServerSeq);
                     net_.pendingFullRequest = true;
                     return;
                 }
@@ -739,6 +770,8 @@ namespace Core::App::Game
                 if (samples.size() != ss.sampleCount)
                 {
                     badPacketsDropped_++;
+                    Log()->Warning("[Net] Dropped partial update: samples read mismatch. entityID={} expectedSamples={} gotSamples={} dropped={} seq={}",
+                                   entry.entityID, ss.sampleCount, samples.size(), badPacketsDropped_, net_.lastServerSeq);
                     net_.pendingFullRequest = true;
                     return;
                 }
@@ -751,6 +784,8 @@ namespace Core::App::Game
                 if (!reader.ReadPod(fs))
                 {
                     badPacketsDropped_++;
+                    Log()->Warning("[Net] Dropped partial update: failed to read FoodState. entityID={} dropped={} seq={}",
+                                   entry.entityID, badPacketsDropped_, net_.lastServerSeq);
                     net_.pendingFullRequest = true;
                     return;
                 }
@@ -760,6 +795,8 @@ namespace Core::App::Game
             else
             {
                 badPacketsDropped_++;
+                Log()->Warning("[Net] Dropped partial update: unknown entity type. type={} entityID={} dropped={} seq={}",
+                               static_cast<std::uint32_t>(entry.type), entry.entityID, badPacketsDropped_, net_.lastServerSeq);
                 net_.pendingFullRequest = true;
                 return;
             }

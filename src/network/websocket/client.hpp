@@ -25,6 +25,8 @@ namespace Core::Network::Websocket {
             MessageCallback callback;
         };
 
+        std::chrono::steady_clock::time_point lastKeepAlive_ = std::chrono::steady_clock::now();
+
         Net::Client::Shared client_;
         std::unordered_map<std::string, std::vector<MessageCallback>> messageHandlers_;
         std::unordered_map<uint64_t, JobHandler> jobsHandlers_;
