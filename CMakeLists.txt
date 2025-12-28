@@ -36,6 +36,8 @@ else()
     set(BOOST_ROOT       "C:/msys64/mingw64" CACHE PATH "" FORCE)
 
     add_compile_options(-Wa,-mbig-obj)
+
+    include_directories("C:/mingw64/include")
 endif()
 
 set(BUILD_SHARED_LIBS OFF)
