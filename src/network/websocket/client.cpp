@@ -4,13 +4,18 @@
 
 #include <chrono>
 
+#include "utils.hpp"
+
 namespace Core::Network::Websocket {
     using namespace std::chrono_literals;
 
     void WebsocketClient::Initialise()
     {
+        auto host = Utils::Env("WS_HOST");
+        if (host.empty())
+            host = "127.0.0.1";
         Net::ClientConfig config;
-        config.host   = "127.0.0.1";
+        config.host      =  host;
         config.port      = 9100;
         config.mode      = Net::Mode::Json;
         config.ioThreads = 2;

@@ -3,6 +3,8 @@
 #include <cmath>
 #include <vector>
 
+#include "utils.hpp"
+
 namespace Core::App::Game
 {
     GameClient::GameClient()
@@ -11,7 +13,12 @@ namespace Core::App::Game
 
     void GameClient::Initialise(const std::uint8_t serverID)
     {
+        auto host = Utils::Env("WS_HOST");
+        if (host.empty())
+            host = "127.0.0.1";
+
         Utils::Net::Udp::ClientConfig cfg;
+        cfg.host = host;
         cfg.port = 7777 + serverID;
         cfg.mode = Utils::Net::Udp::Mode::Bytes;
         cfg.ioThreads = 2;
