@@ -2,6 +2,7 @@
 #include "legacy_game_math.hpp"
 
 #include <cmath>
+#include <filesystem>
 
 namespace Core::App::Render::Pages {
 
@@ -11,7 +12,7 @@ namespace Core::App::Render::Pages {
     {
         Log()->Debug("Initializing Playing page");
 
-        const sf::Vector2f panelSize { 320.f, 420.f };
+        const sf::Vector2f panelSize { 320.f, 360.f };
 
         // позиция для Block задаётся по ЦЕНТРУ (как у кнопки)
         const sf::Vector2f panelCenter {
@@ -49,6 +50,26 @@ namespace Core::App::Render::Pages {
             .vAlign = UI::Components::Text::VAlign::Top,
             .color = sf::Color(220, 220, 220)
         });
+
+        std::filesystem::path glowShaderPath = "assets/resources/glow.frag";
+        std::filesystem::path snakeShaderPath = "assets/resources/snake.frag";
+
+        if (!glowShader.loadFromFile(glowShaderPath.string(), sf::Shader::Fragment))
+        {
+            throw std::runtime_error("Failed to load glow shader from " + glowShaderPath.string());
+        }
+
+        if (!snakeShader.loadFromFile(snakeShaderPath.string(), sf::Shader::Fragment))
+        {
+            throw std::runtime_error("Failed to load snake shader from " + snakeShaderPath.string());
+        }
+
+        if (!whiteTexture.create(1, 1))
+        {
+            throw std::runtime_error("Failed to create white texture");
+        }
+        sf::Uint8 pixel[] = {255, 255, 255, 255};
+        whiteTexture.update(pixel);
     }
 
     void Playing::OnAllInterfacesLoaded()
@@ -65,6 +86,8 @@ namespace Core::App::Render::Pages {
         const auto gameClient = gameController_->GetCurrentGameClient();
         if (!gameClient)
             return;
+
+        frame_ = gameClient->GetServerFrame();
 
         const auto playerSnake = gameClient->GetPlayerSnake();
         if (!playerSnake)
@@ -170,9 +193,14 @@ namespace Core::App::Render::Pages {
         if (!gameClient)
             return;
 
-        if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::R)
+        if (event.type == sf::Event::KeyPressed && event.key.scancode == sf::Keyboard::Scancode::R)
         {
             gameClient->ForceFullUpdateRequest();
+        }
+
+        if (event.type == sf::Event::KeyPressed && event.key.scancode == sf::Keyboard::Scancode::Escape)
+        {
+            gameController_->ExitToMenu();
         }
     }
 
@@ -259,18 +287,18 @@ namespace Core::App::Render::Pages {
 
         float factor = 1.f;
 
-        // if(snake->IsKilled()) {
-        //     auto frames = serverFrame - snake->FrameKilled();
-        //
-        //     if(frames > SmoothDuration)
-        //         return;
-        //
-        //     factor = ((SmoothDuration - frames) / SmoothDuration);
-        // }
-        // else if(serverFrame - snake->FrameCreated() < SmoothDuration) {
-        //     auto frames = serverFrame - snake->FrameCreated();
-        //     factor = frames / SmoothDuration;
-        // }
+        if(snake->IsKilled()) {
+            auto frames = frame_ - snake->FrameKilled();
+
+            if(frames > SmoothDuration)
+                return;
+
+            factor = ((SmoothDuration - frames) / SmoothDuration);
+        }
+        else if(frame_ - snake->FrameCreated() < SmoothDuration) {
+            auto frames = frame_ - snake->FrameCreated();
+            factor = frames / SmoothDuration;
+        }
 
         if(factor != 1.f)
         {
@@ -301,33 +329,27 @@ namespace Core::App::Render::Pages {
             circle.setFillColor(color);
             circle.setOrigin(radius, radius);
             circle.setPosition(position);
-            circle.setOutlineColor(sf::Color::White);
-            circle.setOutlineThickness(2.5f);
+            // circle.setOutlineColor(sf::Color::White);
+            // circle.setOutlineThickness(2.5f);
 
             window.draw(circle);
 
             // // Assign a white texture to generate texture coordinates
-            // circle->setTexture(&whiteTexture);
-            //
-            // // Apply the glow shader
-            // // Individual time offset for each segment to vary the glow
-            // float timeOffset = offset + num * 0.1f;
-            // float time = clock.getElapsedTime().asSeconds() + timeOffset;
-            //
-            // // Prepare render states with the shader
-            // sf::RenderStates states;
-            // states.shader = &glowShader;
-            // states.blendMode = sf::BlendAlpha;
-            //
-            // drawable.push_back({.drawable = circle});
-            //
-            // drawable.push_back({
-            //                        .drawable = circle,
-            //                        .renderStates = states,
-            //                        .baseColor = sf::Glsl::Vec4(color.r / 255.f, color.g / 255.f, color.b / 255.f, 1.f),
-            //                        .time = time,
-            //                        .pulseSpeed = 5.f
-            //                    });
+            circle.setTexture(&whiteTexture);
+
+            // Apply the glow shader
+            // Individual time offset for each segment to vary the glow
+            float timeOffset = offset + num * 0.1f;
+            float time = clock.getElapsedTime().asSeconds() + timeOffset;
+
+            // Prepare render states with the shader
+            sf::RenderStates states;
+            states.shader = &glowShader;
+            states.blendMode = sf::BlendAlpha;
+
+            snakeShader.setUniform("time", time);
+            snakeShader.setUniform("baseColor", sf::Glsl::Vec4(color.r / 255.f, color.g / 255.f, color.b / 255.f, 1.f));
+            window.draw(circle, states);
 
             num++;
         }
@@ -340,18 +362,18 @@ namespace Core::App::Render::Pages {
         auto radius = food->GetRadius();
 
         float factor = 1.f;
-        // if(food->IsKilled()) {
-        //     auto frames = serverFrame - food->FrameKilled();
-        //
-        //     if(frames > SmoothDuration)
-        //         return;
-        //
-        //     factor = ((SmoothDuration - frames) / SmoothDuration);
-        // }
-        // else if(serverFrame - food->FrameCreated() < SmoothDuration) {
-        //     auto frames = serverFrame - food->FrameCreated();
-        //     factor = frames / SmoothDuration;
-        // }
+        if(food->IsKilled()) {
+            const auto frames = frame_ - food->FrameKilled();
+
+            if(frames > SmoothDuration)
+                return;
+
+            factor = ((SmoothDuration - frames) / SmoothDuration);
+        }
+        else if(frame_ - food->FrameCreated() < SmoothDuration) {
+            const auto frames = frame_ - food->FrameCreated();
+            factor = frames / SmoothDuration;
+        }
 
         if(factor != 1.f) {
             radius *= factor;
@@ -368,35 +390,32 @@ namespace Core::App::Render::Pages {
         // Добавляем основной круг в список для отрисовки
         // drawable.push_back({mainBall, sf::RenderStates::Default, {}, 0.f, 0.f});
         //
-        // // Создаём круг для эффекта свечения
-        // auto glowRadius = radius * 3.0f; // Увеличиваем радиус свечения
-        // auto glowBall = std::make_shared<sf::CircleShape>(glowRadius, 50);
-        // glowBall->setFillColor(sf::Color::White);
-        // glowBall->setOrigin(glowRadius, glowRadius);
-        // glowBall->setPosition(food->GetPosition());
-        // glowBall->setTexture(&whiteTexture);
-        //
-        // // Индивидуальные параметры для анимации
-        // float timeOffset = offset;
-        // float time = clock.getElapsedTime().asSeconds() + timeOffset;
-        //
-        // // Корректируем скорость пульсации для более плавной анимации
-        // float pulseSpeed = 1.0f + 0.5f * std::sin(offset);
-        //
-        // // Подготавливаем состояние отрисовки с шейдером
-        // sf::RenderStates states;
-        // states.shader = &glowShader;
-        // states.blendMode = sf::BlendAdd;
-        //
-        // // Сохраняем параметры униформ вместе с объектом
-        // DrawableItem item = DrawableItem{
-        //     .drawable = glowBall,
-        //     .renderStates = states,
-        //     .baseColor = sf::Glsl::Vec4(color.r / 255.f, color.g / 255.f, color.b / 255.f, 1.f),
-        //     .time = time,
-        //     .pulseSpeed = pulseSpeed
-        // };
-        // drawable.push_back(item);
+        // Создаём круг для эффекта свечения
+        auto glowRadius = radius * 3.0f; // Увеличиваем радиус свечения
+        sf::CircleShape glowBall(glowRadius, 50);
+        glowBall.setFillColor(sf::Color::White);
+        glowBall.setOrigin(glowRadius, glowRadius);
+        glowBall.setPosition(food->GetPosition());
+        glowBall.setTexture(&whiteTexture);
+        
+        // Индивидуальные параметры для анимации
+        float timeOffset = offset;
+        float time = clock.getElapsedTime().asSeconds() + timeOffset;
+        
+        // Корректируем скорость пульсации для более плавной анимации
+        float pulseSpeed = 1.0f + 0.5f * std::sin(offset);
+        
+        // Подготавливаем состояние отрисовки с шейдером
+        sf::RenderStates states;
+        states.shader = &glowShader;
+        states.blendMode = sf::BlendAdd;
+
+        glowShader.setUniform("time", time);
+        glowShader.setUniform("baseColor", sf::Glsl::Vec4(color.r / 255.f, color.g / 255.f, color.b / 255.f, 1.f));
+        glowShader.setUniform("pulseSpeed", pulseSpeed);
+
+        window.draw(glowBall, states);
+
 
         offset += 0.05f; // Уменьшаем шаг для более плавных изменений
     }

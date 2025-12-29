@@ -213,10 +213,12 @@ namespace Core::App::Game
 
     void GameClient::OnConnected()
     {
+        ClearWorld();
     }
 
     void GameClient::OnDisconnected()
     {
+        ClearWorld();
     }
 
     void GameClient::OnConnectionError(const std::string & error, const bool /*reconnect*/)
@@ -443,6 +445,12 @@ namespace Core::App::Game
         return info;
     }
 
+    uint32_t GameClient::GetServerFrame() const
+    {
+        return frame_;
+    }
+
+
     GameClient::Shared GameClient::Create(const BaseServiceContainer * parent, const std::uint8_t serverID)
     {
         const auto obj = std::make_shared<GameClient>();
@@ -493,7 +501,8 @@ namespace Core::App::Game
 
                 if (entityID == playerEntityID_)
                 {
-                    clientSnake_.reset();
+                    if (clientSnake_)
+                        clientSnake_->Kill(frame_);
                 }
             }
         }

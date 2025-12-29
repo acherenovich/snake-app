@@ -47,6 +47,8 @@ namespace Core::App::Game
         Utils::Task<ActionResult<>> JoinSession(uint32_t sessionID) override;
 
         Interface::GameClient::Shared GetCurrentGameClient() const override;
+
+        void ExitToMenu() override;
     private:
         std::string GetServiceContainerName() const override
         {

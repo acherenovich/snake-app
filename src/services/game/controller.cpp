@@ -138,4 +138,10 @@ namespace Core::App::Game
     {
         return gameClient_;
     }
+
+    void Controller::ExitToMenu()
+    {
+        gameClient_ = {};
+        SetMainState(MainState_Menu);
+    }
 }

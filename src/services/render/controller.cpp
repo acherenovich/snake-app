@@ -32,7 +32,8 @@ namespace Core::App::Render
                     case sf::Event::Closed:
                         window_.close();
                         Log()->Debug("Close window_");
-                        // initializer.globalEvents.CallEvent(CallStop);
+
+                        std::exit(0);
                         break;
                     default:
                         break;

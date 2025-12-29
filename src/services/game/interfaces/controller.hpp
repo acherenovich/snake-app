@@ -25,6 +25,8 @@ namespace Core::App::Game
             virtual Utils::Task<ActionResult<>> JoinSession(uint32_t sessionID) = 0;
 
             [[nodiscard]] virtual GameClient::Shared GetCurrentGameClient() const = 0;
+
+            virtual void ExitToMenu() = 0;
         };
     }
 }

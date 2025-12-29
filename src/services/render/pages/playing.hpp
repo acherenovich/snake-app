@@ -30,6 +30,12 @@ namespace Core::App::Render::Pages {
         sf::View view_ = {center_, size_};
         float zoom_ = 10.0;
 
+        sf::Clock clock;
+        sf::Font font;
+        sf::Shader glowShader, snakeShader;
+        sf::Texture whiteTexture;
+
+        uint32_t frame_ = 0;
 
         struct
         {

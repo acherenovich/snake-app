@@ -50,6 +50,8 @@ namespace Core::App::Game
             virtual void ForceFullUpdateRequest() = 0;
 
             [[nodiscard]] virtual DebugInfo GetDebugInfo() const = 0;
+
+            [[nodiscard]] virtual uint32_t GetServerFrame() const = 0;
         };
     }
 

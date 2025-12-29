@@ -24,7 +24,7 @@ namespace Core::App::Game
     {
         UdpClient::Shared udpClient_;
 
-        Snake::Shared clientSnake_;
+        EntitySnake::Shared clientSnake_;
 
         struct NetState
         {
@@ -102,6 +102,9 @@ namespace Core::App::Game
         void ForceFullUpdateRequest() override;
 
         [[nodiscard]] DebugInfo GetDebugInfo() const override;
+
+        [[nodiscard]] uint32_t GetServerFrame() const override;
+
 
         static Shared Create(const BaseServiceContainer * parent, std::uint8_t serverID);
 
