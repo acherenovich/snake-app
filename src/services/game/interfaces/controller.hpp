@@ -58,6 +58,8 @@ namespace Core::App::Game
 
             virtual Utils::Task<ActionResult<Stats>> GetStats() = 0;
 
+            virtual Utils::Task<ActionResult<std::unordered_map<std::string, uint32_t>>> GetLeaderboard() = 0;
+
             virtual Utils::Task<ActionResult<>> JoinSession(uint32_t sessionID) = 0;
 
             [[nodiscard]] virtual GameClient::Shared GetCurrentGameClient() const = 0;

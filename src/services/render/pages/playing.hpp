@@ -13,6 +13,9 @@
 
 #include "legacy_entities.hpp"
 
+#include <unordered_map>
+#include <vector>
+
 namespace Core::App::Render::Pages {
 
     class Playing final : public PagesServiceInstance
@@ -43,10 +46,17 @@ namespace Core::App::Render::Pages {
 
         uint32_t frame_ = 0;
 
+        // ===== Leaderboard =====
+        std::vector<std::pair<std::string, uint32_t>> leaderboardSorted_;
+        uint32_t lastLeaderboardFrame_ = 0;
+
         struct
         {
             UI::Components::Block::Shared debugPanel;
             UI::Components::Text::Shared  debugText;
+
+            UI::Components::Block::Shared leaderboardPanel;
+            UI::Components::Text::Shared  leaderboardText;
         } ui;
 
         GameController::Shared gameController_;
@@ -72,7 +82,10 @@ namespace Core::App::Render::Pages {
         void SetZoom(float z);
 
         sf::Vector2f GetMousePosition(sf::RenderWindow & window);
+
     private:
+        void RefreshLeaderboardUI();
+        void RequestLeaderboard();
 
         [[nodiscard]] Game::MainState GetType() const override
         {

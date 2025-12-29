@@ -1,10 +1,13 @@
 #include "game_client.hpp"
 
 #include <cmath>
+#include <utility>
 #include <vector>
 #include <algorithm>
 
 #include "utils.hpp"
+
+using namespace std::chrono_literals;
 
 namespace Core::App::Game
 {
@@ -214,11 +217,21 @@ namespace Core::App::Game
     void GameClient::OnConnected()
     {
         ClearWorld();
+
+        connected_ = true;
+
+        if (connectCallback_)
+        {
+            connectCallback_(udpClient_->SessionID());
+            connectCallback_ = {};
+        }
     }
 
     void GameClient::OnDisconnected()
     {
         ClearWorld();
+
+        disconnected_ = true;
     }
 
     void GameClient::OnConnectionError(const std::string & error, const bool /*reconnect*/)
@@ -331,6 +344,25 @@ namespace Core::App::Game
             ApplySnakeSnapshot(reader);
             return;
         }
+    }
+
+    bool GameClient::IsLoaded() const
+    {
+        return connected_;
+    }
+
+    bool GameClient::IsTimeout() const
+    {
+        if (disconnected_)
+            return true;
+
+
+        return false;
+    }
+
+    void GameClient::SetConnectCallback(std::function<void(uint64_t sessionID)> callback)
+    {
+        connectCallback_ = std::move(callback);
     }
 
     Snake::Shared GameClient::GetPlayerSnake()

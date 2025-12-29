@@ -74,6 +74,12 @@ namespace Core::App::Game
         std::unordered_map<std::uint32_t, std::uint32_t> snakeSnapshotCooldownFrame_; // entityID -> nextAllowedFrame
         std::unordered_set<std::uint32_t> pendingSnakeSnapshots_; // entityIDs to request
 
+        std::chrono::steady_clock::time_point dateCreated = std::chrono::steady_clock::time_point::clock::now();
+
+        bool connected_ { false };
+        bool disconnected_ { false };
+
+        std::function<void(uint64_t sessionID)> connectCallback_;
     public:
         using Shared = std::shared_ptr<GameClient>;
 
@@ -92,6 +98,11 @@ namespace Core::App::Game
 
         void OnMessage(const std::vector<std::uint8_t>& data) override;
 
+        bool IsLoaded() const;
+
+        bool IsTimeout() const;
+
+        void SetConnectCallback(std::function<void(uint64_t sessionID)> callback);
     public:
         Snake::Shared GetPlayerSnake() override;
 

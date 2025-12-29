@@ -26,6 +26,8 @@ namespace Core::App::Game
 
         Profile profile_;
 
+        uint32_t serverID_ = 0;
+
     public:
         using Shared = std::shared_ptr<Controller>;
 
@@ -51,7 +53,11 @@ namespace Core::App::Game
 
         Utils::Task<ActionResult<Stats>> GetStats() override;
 
+        Utils::Task<ActionResult<std::unordered_map<std::string, uint32_t>>> GetLeaderboard() override;
+
         Utils::Task<ActionResult<>> JoinSession(uint32_t sessionID) override;
+
+        Utils::Task<ActionResult<>> SessionJoined(uint32_t serverID, uint64_t ssid);
 
         Interface::GameClient::Shared GetCurrentGameClient() const override;
 

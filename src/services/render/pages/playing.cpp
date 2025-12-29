@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <filesystem>
+#include <algorithm>
 
 static float Len(const sf::Vector2f& v)
 {
@@ -44,75 +45,182 @@ namespace Core::App::Render::Pages {
     {
         Log()->Debug("Initializing Playing page");
 
-        const sf::Vector2f panelSize { 320.f, 330.f };
+        // ==========================
+        // Debug panel (bottom-left)
+        // ==========================
+        {
+            const sf::Vector2f panelSize { 320.f, 330.f };
+            const sf::Vector2f panelCenter {
+                20.f + panelSize.x * 0.5f,
+                Height - 20.f - panelSize.y * 0.5f
+            };
 
-        // позиция для Block задаётся по ЦЕНТРУ (как у кнопки)
-        const sf::Vector2f panelCenter {
-            20.f + panelSize.x * 0.5f,
-            Height - 20.f - panelSize.y * 0.5f
-        };
+            ui.debugPanel = UI::Components::Block::Create({
+                .position = panelCenter,
+                .size = panelSize,
+                .enabled = true
+            });
 
-        ui.debugPanel = UI::Components::Block::Create({
-            .position = panelCenter,
-            .size = panelSize,
-            .enabled = true
-        });
+            UI::Components::Block::Style normal{};
+            normal.background = sf::Color(10, 12, 18, 200);
+            normal.borderThickness = 2.f;
+            normal.borderColor = sf::Color(255, 255, 255, 20);
+            normal.radius = UI::Components::Block::BorderRadius::Uniform(12.f);
+            normal.radiusQuality = 12;
 
-        UI::Components::Block::Style normal{};
-        normal.background = sf::Color(10, 12, 18, 200);
-        normal.borderThickness = 2.f;
-        normal.borderColor = sf::Color(255, 255, 255, 20);
-        normal.radius = UI::Components::Block::BorderRadius::Uniform(12.f);
-        normal.radiusQuality = 12;
+            UI::Components::Block::Style hover = normal;
+            hover.borderColor = sf::Color(255, 255, 255, 35);
 
-        UI::Components::Block::Style hover = normal;
-        hover.borderColor = sf::Color(255, 255, 255, 35);
+            ui.debugPanel->SetStyles(normal, hover, normal, normal);
 
-        ui.debugPanel->SetStyles(normal, hover, normal, normal);
+            ui.debugText = UI::Components::Text::Create({
+                .text = "Debug info",
+                .font = "assets/fonts/Roboto-Regular.ttf",
+                .characterSize = 12,
+                .position = {
+                    panelCenter.x - panelSize.x * 0.5f + 12.f,
+                    panelCenter.y - panelSize.y * 0.5f + 10.f
+                },
+                .hAlign = UI::Components::Text::HAlign::Left,
+                .vAlign = UI::Components::Text::VAlign::Top,
+                .color = sf::Color(220, 220, 220)
+            });
+        }
 
-        ui.debugText = UI::Components::Text::Create({
-            .text = "Debug info",
-            .font = "assets/fonts/Roboto-Regular.ttf",
-            .characterSize = 12,
-            .position = {
-                panelCenter.x - panelSize.x * 0.5f + 12.f,
-                panelCenter.y - panelSize.y * 0.5f + 10.f
-            },
-            .hAlign = UI::Components::Text::HAlign::Left,
-            .vAlign = UI::Components::Text::VAlign::Top,
-            .color = sf::Color(220, 220, 220)
-        });
+        // ==========================
+        // Leaderboard panel (top-right)
+        // ==========================
+        {
+            const sf::Vector2f lbSize { 280.f, 300.f };
+            const sf::Vector2f lbCenter {
+                Width - 20.f - lbSize.x * 0.5f,
+                20.f + lbSize.y * 0.5f
+            };
 
+            ui.leaderboardPanel = UI::Components::Block::Create({
+                .position = lbCenter,
+                .size = lbSize,
+                .enabled = true
+            });
+
+            UI::Components::Block::Style normal{};
+            normal.background = sf::Color(10, 12, 18, 185);
+            normal.borderThickness = 2.f;
+            normal.borderColor = sf::Color(255, 255, 255, 18);
+            normal.radius = UI::Components::Block::BorderRadius::Uniform(12.f);
+            normal.radiusQuality = 12;
+
+            UI::Components::Block::Style hover = normal;
+            hover.borderColor = sf::Color(255, 255, 255, 30);
+
+            ui.leaderboardPanel->SetStyles(normal, hover, normal, normal);
+
+            ui.leaderboardText = UI::Components::Text::Create({
+                .text = "Leaderboard\n...",
+                .font = "assets/fonts/Roboto-Regular.ttf",
+                .characterSize = 14,
+                .position = {
+                    lbCenter.x - lbSize.x * 0.5f + 12.f,
+                    lbCenter.y - lbSize.y * 0.5f + 10.f
+                },
+                .hAlign = UI::Components::Text::HAlign::Left,
+                .vAlign = UI::Components::Text::VAlign::Top,
+                .color = sf::Color(230, 230, 230)
+            });
+        }
+
+        // ==========================
+        // Shaders / textures
+        // ==========================
         std::filesystem::path glowShaderPath = "assets/resources/glow.frag";
         std::filesystem::path snakeShaderPath = "assets/resources/snake.frag";
 
         if (!glowShader.loadFromFile(glowShaderPath.string(), sf::Shader::Fragment))
-        {
             throw std::runtime_error("Failed to load glow shader from " + glowShaderPath.string());
-        }
 
         if (!snakeShader.loadFromFile(snakeShaderPath.string(), sf::Shader::Fragment))
-        {
             throw std::runtime_error("Failed to load snake shader from " + snakeShaderPath.string());
-        }
 
         std::filesystem::path blurShaderPath = "assets/resources/liquid_blur.frag";
         if (!blurShader_.loadFromFile(blurShaderPath.string(), sf::Shader::Fragment))
-        {
             throw std::runtime_error("Failed to load blur shader from " + blurShaderPath.string());
-        }
 
         if (!whiteTexture.create(1, 1))
-        {
             throw std::runtime_error("Failed to create white texture");
-        }
+
         sf::Uint8 pixel[] = {255, 255, 255, 255};
         whiteTexture.update(pixel);
+
+        RefreshLeaderboardUI();
     }
 
     void Playing::OnAllInterfacesLoaded()
     {
         gameController_ = IFace().Get<GameController>();
+    }
+
+    void Playing::RequestLeaderboard()
+    {
+        // раз в 64 кадра или по таймеру (тут по кадру)
+        if (frame_ - lastLeaderboardFrame_ < 64)
+            return;
+
+        lastLeaderboardFrame_ = frame_;
+
+        gameController_->GetLeaderboard() =
+            [this](const Game::ActionResult<std::unordered_map<std::string, uint32_t>>& result)
+            {
+                if (!result.success)
+                {
+                    Log()->Error("Failed to get leaderboard");
+                    return;
+                }
+
+                leaderboardSorted_.clear();
+                leaderboardSorted_.reserve(result.result.size());
+
+                for (const auto& [name, score] : result.result)
+                    leaderboardSorted_.emplace_back(name, score);
+
+                std::ranges::sort(leaderboardSorted_,
+                                  [](const auto& a, const auto& b)
+                                  {
+                                      return a.second > b.second; // DESC
+                                  });
+
+                RefreshLeaderboardUI();
+            };
+    }
+
+    void Playing::RefreshLeaderboardUI()
+    {
+        std::string out;
+        out.reserve(512);
+
+        out += "Leaderboard\n\n";
+
+        const std::size_t maxShow = 10;
+        const std::size_t count = std::min(maxShow, leaderboardSorted_.size());
+
+        if (count == 0)
+        {
+            out += "No data\n";
+        }
+        else
+        {
+            for (std::size_t i = 0; i < count; ++i)
+            {
+                const auto& [name, score] = leaderboardSorted_[i];
+
+                out += std::to_string(i + 1) + ". ";
+                out += name;
+                out += " - ";
+                out += std::to_string(score);
+                out += "\n";
+            }
+        }
+
+        ui.leaderboardText->SetText(out);
     }
 
     void Playing::UpdateScene()
@@ -129,6 +237,8 @@ namespace Core::App::Render::Pages {
 
         frame_ = gameClient->GetServerFrame();
 
+        RequestLeaderboard();
+
         const auto playerSnake = gameClient->GetPlayerSnake();
         if (!playerSnake)
             return;
@@ -143,57 +253,40 @@ namespace Core::App::Render::Pages {
         DrawGrid(window);
 
         for (const auto& food: gameClient->GetNearestFoods())
-        {
             DrawFood(window, food);
-        }
 
         DrawSnake(window, playerSnake);
         for (const auto& snake: gameClient->GetNearestVictims())
-        {
             DrawSnake(window, snake);
-        }
-
-
 
         // ==========================
         // UI render (screen space)
         // ==========================
         window.setView(window.getDefaultView());
 
-        // camera center in world coords
         const auto cam = GetCameraCenter();
-
-        // mouse world coords
         const auto mouseWorld = GetMousePosition(window);
 
         playerSnake->SetDestination(mouseWorld);
 
-        // update debug text
+        // update debug text (оставил как было)
         const auto debug = gameClient->GetDebugInfo();
+
         auto FormatBytes = [](const std::uint32_t bytes)
         {
-            if (bytes < 1024)
-                return std::to_string(bytes) + " B";
-
-            if (bytes < 1024 * 1024)
-                return std::to_string(bytes / 1024) + " KB";
-
+            if (bytes < 1024) return std::to_string(bytes) + " B";
+            if (bytes < 1024 * 1024) return std::to_string(bytes / 1024) + " KB";
             return std::to_string(bytes / (1024 * 1024)) + " MB";
         };
 
-        auto Bool = [](const bool v)
-        {
-            return v ? "true" : "false";
-        };
+        auto Bool = [](const bool v) { return v ? "true" : "false"; };
 
         std::string text;
         text.reserve(1024);
 
         text += "Camera: " + std::to_string(static_cast<int>(cam.x)) + ", " + std::to_string(static_cast<int>(cam.y)) + "\n";
         text += "Mouse:  " + std::to_string(static_cast<int>(mouseWorld.x)) + ", " + std::to_string(static_cast<int>(mouseWorld.y)) + "\n";
-
         text += "Zoom:   " + std::to_string(zoom_) + "\n";
-
         text += "Exp:    " + std::to_string(playerSnake->GetExperience()) + "\n";
         text += "Size:   " + std::to_string(playerSnake->Segments().size()) + "\n";
 
@@ -216,15 +309,17 @@ namespace Core::App::Render::Pages {
 
         ui.debugText->SetText(text);
 
-
         ui.debugPanel->Update(window);
         ui.debugText->Update();
 
-        for (auto* d : ui.debugPanel->Drawables())
-            window.draw(*d);
+        ui.leaderboardPanel->Update(window);
+        ui.leaderboardText->Update();
 
-        for (auto* d : ui.debugText->Drawables())
-            window.draw(*d);
+        for (auto* d : ui.debugPanel->Drawables()) window.draw(*d);
+        for (auto* d : ui.debugText->Drawables()) window.draw(*d);
+
+        for (auto* d : ui.leaderboardPanel->Drawables()) window.draw(*d);
+        for (auto* d : ui.leaderboardText->Drawables()) window.draw(*d);
     }
 
     void Playing::HandleEvent(sf::Event &event, sf::RenderWindow &window)

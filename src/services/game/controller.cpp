@@ -38,7 +38,15 @@ namespace Core::App::Game
     void Controller::ProcessTick()
     {
         if (gameClient_)
+        {
+            if (gameClient_->IsTimeout())
+            {
+                gameClient_ = {};
+                return;;
+            }
+
             gameClient_->ProcessTick();
+        }
     }
 
     MainState Controller::GetMainState() const
@@ -167,12 +175,81 @@ namespace Core::App::Game
         co_return {.success = true, .result = stats};
     }
 
+    Utils::Task<ActionResult<std::unordered_map<std::string, uint32_t>>> Controller::GetLeaderboard()
+    {
+        if (!gameClient_)
+            co_return {.error = "not_connected"};
+
+        const boost::json::object request = {
+            {"serverId", serverID_},
+        };
+
+        const auto message = co_await client_->Request("player_session::leaderboard", request);
+        if (!message)
+            co_return {.error = "timeout"};
+
+        auto & json = message->GetBody();
+
+        std::unordered_map<std::string, uint32_t> leaderboard;
+
+        try {
+            for (auto sessionJson: json["body"].as_object()["leaderboard"].as_array())
+            {
+                auto sessionVal = sessionJson.as_object();
+
+                const std::string name = sessionVal["name"].as_string().c_str();
+                const uint32_t exp = sessionVal["exp"].as_int64();
+
+                leaderboard[name] = exp;
+            }
+        }
+        catch (...)
+        {
+            co_return {.success = false};
+        }
+
+        co_return {.success = true, .result = leaderboard};
+    }
 
     Utils::Task<ActionResult<>> Controller::JoinSession(uint32_t sessionID)
     {
-        SetMainState(MainState_Playing);
+        serverID_ = sessionID;
+
+        SetMainState(MainState_JoiningSession);
 
         gameClient_ = GameClient::Create(this, sessionID);
+        gameClient_->SetConnectCallback([this, sessionID](uint64_t ssid) {
+            SessionJoined(sessionID, ssid) = [this](const ActionResult<> & result) {
+                if (mainState_ != MainState_JoiningSession)
+                    return;
+
+                if (!result.success)
+                {
+                    gameClient_ = {};
+                    SetMainState(MainState_Menu);
+                    return;
+                }
+
+                SetMainState(MainState_Playing);
+            };
+        });
+
+        co_return {.success = true};
+    }
+
+    Utils::Task<ActionResult<>> Controller::SessionJoined(uint32_t serverID, uint64_t ssid)
+    {
+        if (!client_->IsConnected())
+            co_return {.error = "not_connected"};
+
+        const boost::json::object request = {
+            {"serverId", serverID},
+            {"ssid", ssid},
+        };
+
+        const auto message = co_await client_->Request("player_session::connect_udp", request);
+        if (!message)
+            co_return {.error = "timeout"};
 
         co_return {.success = true};
     }
