@@ -134,6 +134,12 @@ namespace Core::App::Game
         void QueueSnakeSnapshotRequest(const std::uint32_t entityID);
 
         [[nodiscard]] float GetVisibleRadiusWithPadding() const;
+
+    private:
+        std::string GetServiceContainerName() const override
+        {
+            return "GameClient";
+        }
     };
 
     // ===== helpers (non-static) =====

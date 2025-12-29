@@ -370,14 +370,7 @@ namespace Core::App::Game
             if (s->EntityID() == playerEntityID_)
                 continue;
 
-            const auto pos = s->GetPosition();
-            const float dx = pos.x - playerPos.x;
-            const float dy = pos.y - playerPos.y;
-
-            if ((dx * dx + dy * dy) <= radiusSq)
-            {
-                nearestSnakes.insert(std::static_pointer_cast<Snake>(s));
-            }
+            nearestSnakes.insert(std::static_pointer_cast<Snake>(s));
         }
 
         return nearestSnakes;
@@ -652,10 +645,9 @@ namespace Core::App::Game
         }
 
         // apply movement prediction step
-        snake->NetApplyExperience(ss.experience);
         snake->NetSetHead({ ss.headX, ss.headY });
         snake->NetStepBody();
-        snake->RecalculateLength();
+        snake->NetApplyExperience(ss.experience);
 
         snakesTTL_[entityID].lastSeenSeq = net_.lastServerSeq;
 
@@ -1065,6 +1057,7 @@ namespace Core::App::Game
 
         if (expected.size() != serverSamples.size())
         {
+            Utils::Log()->Debug("expected.size() != serverSamples.size() [{} {}]", expected.size(), serverSamples.size());
             return false;
         }
 
