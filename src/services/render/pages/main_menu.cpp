@@ -385,7 +385,7 @@ namespace Core::App::Render::Pages {
 
             l.play->SetStyles(bn, bh, bp, bd);
             l.play->Events().HookEvent(UI::Components::Button::Event::Click) =
-                std::function([=, this] { OnPlaySessionClick(i); });
+                std::function([=, this] { OnPlaySessionClick(i + 1); });
 
             l.players = UI::Components::Text::Create({
                 .text = data[i].players,

@@ -32,7 +32,7 @@ namespace Core::App::Game
             bool hasSeq { false };
 
             bool pendingFullRequest { false };
-            bool pendingFullRequestAllSegments { false }; // NEW
+            bool pendingFullRequestAllSegments { false };
 
             std::uint32_t lastInputSeq { 0 };
         };
@@ -68,7 +68,11 @@ namespace Core::App::Game
         std::uint32_t lastPartialPayloadBytes_ { 0 };
         std::uint32_t badPacketsDropped_ { 0 };
 
-        bool awaitingPlayerRebuild_ { false }; // NEW: после full(allSegments) не валидируем player пока не построили
+        bool awaitingPlayerRebuild_ { false };
+
+        // snake snapshot requests (pointed repair)
+        std::unordered_map<std::uint32_t, std::uint32_t> snakeSnapshotCooldownFrame_; // entityID -> nextAllowedFrame
+        std::unordered_set<std::uint32_t> pendingSnakeSnapshots_; // entityIDs to request
 
     public:
         using Shared = std::shared_ptr<GameClient>;
@@ -104,14 +108,19 @@ namespace Core::App::Game
     private:
         void ClearWorld();
 
-        void UpsertSnake(const std::uint32_t entityID,
-                         const Utils::Legacy::Game::Net::SnakeState& ss,
-                         const std::vector<sf::Vector2f>& samples,
-                         bool isNew);
+        void UpsertSnakeFull(const std::uint32_t entityID,
+                             const Utils::Legacy::Game::Net::SnakeState& ss,
+                             const std::vector<sf::Vector2f>& fullSegments,
+                             const bool isNew);
+
+        void ApplySnakeValidationUpdate(const std::uint32_t entityID,
+                                        const Utils::Legacy::Game::Net::SnakeState& ss,
+                                        const std::vector<sf::Vector2f>& samples,
+                                        const bool isNew);
 
         void UpsertFood(const std::uint32_t entityID,
                         const Utils::Legacy::Game::Net::FoodState& fs,
-                        bool isNew);
+                        const bool isNew);
 
         void RemoveEntity(const Utils::Legacy::Game::Net::EntityType type,
                           const std::uint32_t entityID);
@@ -120,18 +129,23 @@ namespace Core::App::Game
 
         void ApplyPartialUpdate(Utils::Legacy::Game::Net::ByteReader& reader);
 
+        void ApplySnakeSnapshot(Utils::Legacy::Game::Net::ByteReader& reader);
+
+        void QueueSnakeSnapshotRequest(const std::uint32_t entityID);
+
         [[nodiscard]] float GetVisibleRadiusWithPadding() const;
     };
 
     // ===== helpers (non-static) =====
 
-    std::vector<sf::Vector2f> ReadSnakeSamples(Utils::Legacy::Game::Net::ByteReader& r, std::uint8_t count);
+    std::vector<sf::Vector2f> ReadSnakePoints(Utils::Legacy::Game::Net::ByteReader& r, std::uint16_t count);
 
-    std::vector<sf::Vector2f> BuildExpectedSampleIndices(const std::list<sf::Vector2f>& segments,
-                                                         std::size_t desiredCount);
+    std::vector<sf::Vector2f> BuildExpectedSamplesByRadius(const std::list<sf::Vector2f>& segments,
+                                                           const float minDist);
 
-    bool ValidateSamples(const std::list<sf::Vector2f>& predicted,
-                         const std::vector<sf::Vector2f>& serverSamples,
-                         float threshold);
+    bool ValidateSamplesByRadius(const std::list<sf::Vector2f>& predicted,
+                                 const std::vector<sf::Vector2f>& serverSamples,
+                                 const float minDist,
+                                 const float threshold);
 
 } // namespace Core::App::Game

@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <vector>
+#include <algorithm>
 
 #include "utils.hpp"
 
@@ -88,9 +89,39 @@ namespace Core::App::Game
                 net_.pendingFullRequest = false;
                 net_.pendingFullRequestAllSegments = false;
             }
+
+            // pending snake snapshot requests (pointed repair)
+            if (!pendingSnakeSnapshots_.empty())
+            {
+                using namespace Utils::Legacy::Game::Net;
+
+                std::uint32_t sent = 0;
+                constexpr std::uint32_t perTickLimit = 16;
+
+                for (auto it = pendingSnakeSnapshots_.begin(); it != pendingSnakeSnapshots_.end() && sent < perTickLimit; )
+                {
+                    const auto entityID = *it;
+
+                    net_.lastInputSeq++;
+
+                    ByteWriter payload(sizeof(RequestSnakeSnapshotPayload));
+                    RequestSnakeSnapshotPayload rq{};
+                    rq.entityID = entityID;
+                    payload.WritePod(rq);
+
+                    const auto msg = BuildMessage(MessageType::RequestSnakeSnapshot,
+                                                  net_.lastInputSeq,
+                                                  0,
+                                                  payload.Data());
+                    udpClient_->Send(msg);
+
+                    it = pendingSnakeSnapshots_.erase(it);
+                    sent++;
+                }
+            }
         }
 
-        // ===================== stale entity cleanup (твоя логика) =====================
+        // ===================== stale entity cleanup =====================
         if (!clientSnake_)
         {
             return;
@@ -170,6 +201,7 @@ namespace Core::App::Game
 
                 snakesTTL_.erase(id);
                 predict_.erase(id);
+                snakeSnapshotCooldownFrame_.erase(id);
 
                 it = snakesByID_.erase(it);
                 continue;
@@ -196,17 +228,32 @@ namespace Core::App::Game
     {
         using namespace Utils::Legacy::Game::Net;
 
-        MessageHeader header;
-        if (!ParseHeader(std::span(data.data(), data.size()), header))
+        MessageHeader header{};
+        const auto parseErr = ParseHeaderDetailed(std::span(data.data(), data.size()), header);
+
+        if (parseErr != ParseError::Ok)
         {
             badPacketsDropped_++;
-            Log()->Warning("[Net] Dropped packet: ParseHeader failed. bytes={} dropped={}",
-                           data.size(), badPacketsDropped_);
+
+            // try best-effort to read type/seq from bytes when possible
+            std::uint16_t typeRaw = 0;
+            std::uint32_t seqRaw = 0;
+            if (data.size() >= sizeof(MessageHeader))
+            {
+                std::memcpy(&typeRaw, data.data() + 0, sizeof(typeRaw));
+                std::memcpy(&seqRaw, data.data() + 4, sizeof(seqRaw)); // after type+version (4 bytes)
+            }
+
+            Log()->Warning("[Net] Dropped packet: ParseHeaderDetailed failed. err={} bytes={} dropped={} typeRaw={} seqRaw={}",
+                           ParseErrorToString(parseErr), data.size(), badPacketsDropped_, typeRaw, seqRaw);
+
+            // CRC/size/version mismatch means packet is unusable -> request world repair
             net_.pendingFullRequest = true;
+            net_.pendingFullRequestAllSegments = true;
             return;
         }
 
-        // safety: ensure payloadBytes fits buffer
+        // safety: ensure payloadBytes fits buffer (already guaranteed by ParseHeaderDetailed size check)
         const std::size_t totalNeed = sizeof(MessageHeader) + static_cast<std::size_t>(header.payloadBytes);
         if (totalNeed > data.size())
         {
@@ -214,6 +261,7 @@ namespace Core::App::Game
             Log()->Warning("[Net] Dropped packet: payloadBytes out of bounds. bytes={} payloadBytes={} need={} dropped={} type={} seq={}",
                            data.size(), header.payloadBytes, totalNeed, badPacketsDropped_, header.type, header.seq);
             net_.pendingFullRequest = true;
+            net_.pendingFullRequestAllSegments = true;
             return;
         }
 
@@ -231,7 +279,7 @@ namespace Core::App::Game
             lastPartialPayloadBytes_ = header.payloadBytes;
         }
 
-        // sequence check for updates
+        // sequence check ONLY for Full/Partial updates (snapshot is out-of-band)
         if (type == MessageType::FullUpdate || type == MessageType::PartialUpdate)
         {
             if (net_.hasSeq)
@@ -242,6 +290,7 @@ namespace Core::App::Game
                                    header.seq, net_.lastServerSeq + 1);
 
                     net_.pendingFullRequest = true;
+                    net_.pendingFullRequestAllSegments = true;
                     net_.lastServerSeq = header.seq;
                 }
                 else
@@ -272,6 +321,12 @@ namespace Core::App::Game
         if (type == MessageType::PartialUpdate)
         {
             ApplyPartialUpdate(reader);
+            return;
+        }
+
+        if (type == MessageType::SnakeSnapshot)
+        {
+            ApplySnakeSnapshot(reader);
             return;
         }
     }
@@ -364,7 +419,7 @@ namespace Core::App::Game
     void GameClient::ForceFullUpdateRequest()
     {
         net_.pendingFullRequest = true;
-        net_.pendingFullRequestAllSegments = true; // IMPORTANT: player rebuild
+        net_.pendingFullRequestAllSegments = true;
         awaitingPlayerRebuild_ = true;
 
         Log()->Warning("[Net] ForceFullUpdateRequest() -> pendingFullRequestAllSegments=true awaitingPlayerRebuild=true");
@@ -417,6 +472,9 @@ namespace Core::App::Game
         snakesTTL_.clear();
         foodsTTL_.clear();
 
+        snakeSnapshotCooldownFrame_.clear();
+        pendingSnakeSnapshots_.clear();
+
         clientSnake_.reset();
         playerEntityID_ = 0;
     }
@@ -438,6 +496,7 @@ namespace Core::App::Game
 
                 predict_.erase(entityID);
                 snakesTTL_.erase(entityID);
+                snakeSnapshotCooldownFrame_.erase(entityID);
 
                 if (entityID == playerEntityID_)
                 {
@@ -488,30 +547,32 @@ namespace Core::App::Game
         foodsTTL_[entityID].lastSeenSeq = net_.lastServerSeq;
     }
 
-    void GameClient::UpsertSnake(const std::uint32_t entityID,
-                                const Utils::Legacy::Game::Net::SnakeState& ss,
-                                const std::vector<sf::Vector2f>& samples,
-                                const bool isNew)
+    void GameClient::UpsertSnakeFull(const std::uint32_t entityID,
+                                    const Utils::Legacy::Game::Net::SnakeState& ss,
+                                    const std::vector<sf::Vector2f>& fullSegments,
+                                    const bool isNew)
     {
-        // -------- SANITY: protects from corrupted packets --------
+        // sanity
         constexpr std::uint32_t maxReasonableExp = 5'000'000;
-        constexpr std::uint32_t maxReasonableSegments = 20'000;
+        constexpr std::uint32_t maxReasonableSegments = 60'000;
 
         if (ss.experience > maxReasonableExp || ss.totalSegments == 0 || ss.totalSegments > maxReasonableSegments)
         {
             badPacketsDropped_++;
-            Log()->Warning("[Net] Dropped snake update: insane experience/segments. entityID={} exp={} totalSegments={} dropped={} seq={}",
+            Log()->Warning("[Net] Dropped snake FULL: insane exp/segments. entityID={} exp={} totalSegments={} dropped={} seq={}",
                            entityID, ss.experience, ss.totalSegments, badPacketsDropped_, net_.lastServerSeq);
             net_.pendingFullRequest = true;
+            net_.pendingFullRequestAllSegments = true;
             return;
         }
 
-        if (samples.size() > static_cast<std::size_t>(ss.totalSegments))
+        if (fullSegments.size() != static_cast<std::size_t>(ss.totalSegments))
         {
             badPacketsDropped_++;
-            Log()->Warning("[Net] Dropped snake update: samples > totalSegments. entityID={} sampleCount={} totalSegments={} dropped={} seq={}",
-                           entityID, samples.size(), ss.totalSegments, badPacketsDropped_, net_.lastServerSeq);
+            Log()->Warning("[Net] Dropped snake FULL: pointsCount != totalSegments. entityID={} pointsCount={} totalSegments={} dropped={} seq={}",
+                           entityID, fullSegments.size(), ss.totalSegments, badPacketsDropped_, net_.lastServerSeq);
             net_.pendingFullRequest = true;
+            net_.pendingFullRequestAllSegments = true;
             return;
         }
 
@@ -536,9 +597,65 @@ namespace Core::App::Game
         }
 
         snake->NetApplyExperience(ss.experience);
+        snake->NetSetFullSegments(fullSegments);
 
+        snakesTTL_[entityID].lastSeenSeq = net_.lastServerSeq;
+
+        if (entityID == playerEntityID_ && awaitingPlayerRebuild_)
+        {
+            awaitingPlayerRebuild_ = false;
+            Log()->Warning("[Net] Player rebuilt from FULL segments OK. playerID={} segs={}",
+                           playerEntityID_, snake->Segments().size());
+        }
+    }
+
+    void GameClient::QueueSnakeSnapshotRequest(const std::uint32_t entityID)
+    {
+        // never request snapshot for player: player repair uses FullUpdate(allSegments)
+        if (entityID == playerEntityID_)
+        {
+            ForceFullUpdateRequest();
+            return;
+        }
+
+        // cooldown to avoid spam
+        const std::uint32_t nowFrame = frame_;
+        const auto nextAllowed = snakeSnapshotCooldownFrame_.contains(entityID) ? snakeSnapshotCooldownFrame_[entityID] : 0u;
+        if (nowFrame < nextAllowed)
+        {
+            return;
+        }
+
+        snakeSnapshotCooldownFrame_[entityID] = nowFrame + 64; // ~1s at 64 logic tick
+        pendingSnakeSnapshots_.insert(entityID);
+
+        Log()->Warning("[Net] QueueSnakeSnapshotRequest(entityID={})", entityID);
+    }
+
+    void GameClient::ApplySnakeValidationUpdate(const std::uint32_t entityID,
+                                               const Utils::Legacy::Game::Net::SnakeState& ss,
+                                               const std::vector<sf::Vector2f>& samples,
+                                               const bool isNew)
+    {
+        // if we don't have baseline full segments for this snake -> request snapshot, do NOT build from samples
+        if (isNew || !snakesByID_.contains(entityID))
+        {
+            QueueSnakeSnapshotRequest(entityID);
+            return;
+        }
+
+        auto snake = snakesByID_[entityID];
+        if (!snake)
+        {
+            QueueSnakeSnapshotRequest(entityID);
+            return;
+        }
+
+        // apply movement prediction step
+        snake->NetApplyExperience(ss.experience);
         snake->NetSetHead({ ss.headX, ss.headY });
         snake->NetStepBody();
+        snake->RecalculateLength();
 
         snakesTTL_[entityID].lastSeenSeq = net_.lastServerSeq;
 
@@ -548,15 +665,22 @@ namespace Core::App::Game
             return;
         }
 
-        if (samples.size() >= 2)
+        if (samples.empty())
         {
-            constexpr float driftThreshold = 120.0f;
-            if (!ValidateSamples(snake->Segments(), samples, driftThreshold))
-            {
-                Log()->Warning("[Net] Snake drift validation failed -> request full update. entityID={} sampleCount={} segCount={}",
-                               entityID, samples.size(), snake->Segments().size());
-                net_.pendingFullRequest = true;
-            }
+            return;
+        }
+
+        // dynamic thresholds
+        const float minDist = snake->GetRadius(false);
+        const float base = std::max(120.0f, minDist * 3.0f);
+        const float threshold = base;
+
+        if (!ValidateSamplesByRadius(snake->Segments(), samples, minDist, threshold))
+        {
+            Log()->Warning("[Net] Snake drift validation failed -> request repair. entityID={} sampleCount={} segCount={}",
+                           entityID, samples.size(), snake->Segments().size());
+
+            QueueSnakeSnapshotRequest(entityID);
         }
     }
 
@@ -573,10 +697,12 @@ namespace Core::App::Game
             Log()->Warning("[Net] Dropped full update: ReadFullUpdateHeader failed. dropped={} seq={}",
                            badPacketsDropped_, net_.lastServerSeq);
             net_.pendingFullRequest = true;
+            net_.pendingFullRequestAllSegments = true;
             return;
         }
 
         playerEntityID_ = fh.playerEntityID;
+        awaitingPlayerRebuild_ = net_.pendingFullRequestAllSegments ? true : awaitingPlayerRebuild_;
 
         bool playerBuiltExact = false;
 
@@ -598,82 +724,47 @@ namespace Core::App::Game
                     Log()->Warning("[Net] Dropped full update: failed to read SnakeState. entityID={} dropped={} seq={}",
                                    entry.entityID, badPacketsDropped_, net_.lastServerSeq);
                     net_.pendingFullRequest = true;
+                    net_.pendingFullRequestAllSegments = true;
                     return;
                 }
 
-                if (ss.totalSegments == 0 || ss.sampleCount > ss.totalSegments)
+                // FullUpdate must always carry full segments for snakes
+                if (ss.totalSegments == 0 || ss.pointsKind != SnakePointsKind::FullSegments)
                 {
                     badPacketsDropped_++;
-                    Log()->Warning("[Net] Dropped full update: invalid SnakeState fields. entityID={} totalSegments={} sampleCount={} dropped={} seq={}",
-                                   entry.entityID, ss.totalSegments, ss.sampleCount, badPacketsDropped_, net_.lastServerSeq);
+                    Log()->Warning("[Net] Dropped full update: invalid snake kind/segments. entityID={} totalSegments={} kind={} dropped={} seq={}",
+                                   entry.entityID, ss.totalSegments, static_cast<std::uint32_t>(ss.pointsKind), badPacketsDropped_, net_.lastServerSeq);
                     net_.pendingFullRequest = true;
+                    net_.pendingFullRequestAllSegments = true;
                     return;
                 }
 
-                const auto samples = ReadSnakeSamples(reader, ss.sampleCount);
-                if (samples.size() != ss.sampleCount)
+                if (ss.pointsCount != ss.totalSegments)
                 {
                     badPacketsDropped_++;
-                    Log()->Warning("[Net] Dropped full update: samples read mismatch. entityID={} expectedSamples={} gotSamples={} dropped={} seq={}",
-                                   entry.entityID, ss.sampleCount, samples.size(), badPacketsDropped_, net_.lastServerSeq);
+                    Log()->Warning("[Net] Dropped full update: snake pointsCount != totalSegments. entityID={} pointsCount={} totalSegments={} dropped={} seq={}",
+                                   entry.entityID, ss.pointsCount, ss.totalSegments, badPacketsDropped_, net_.lastServerSeq);
                     net_.pendingFullRequest = true;
+                    net_.pendingFullRequestAllSegments = true;
                     return;
                 }
 
-                auto s = std::make_shared<EntitySnake>(0, sf::Vector2f(ss.headX, ss.headY));
-                s->SetEntityID(entry.entityID);
-                s->NetApplyExperience(ss.experience);
-
-                std::vector<sf::Vector2f> segs;
-                segs.reserve(ss.totalSegments);
-
-                if (!samples.empty())
-                {
-                    if (samples.size() == static_cast<std::size_t>(ss.totalSegments))
-                    {
-                        segs = samples;
-                    }
-                    else
-                    {
-                        for (std::size_t i = 0; i < ss.totalSegments; ++i)
-                        {
-                            if (i < samples.size())
-                                segs.push_back(samples[i]);
-                            else
-                                segs.push_back(samples.back());
-                        }
-                    }
-                }
-                else
-                {
-                    for (std::size_t i = 0; i < ss.totalSegments; ++i)
-                        segs.emplace_back(ss.headX, ss.headY);
-                }
-
-                if (segs.size() > 20000)
+                const auto segs = ReadSnakePoints(reader, ss.pointsCount);
+                if (segs.size() != ss.pointsCount)
                 {
                     badPacketsDropped_++;
-                    Log()->Warning("[Net] Dropped full update: insane seg count after build. entityID={} segs={} totalSegments={} dropped={} seq={}",
-                                   entry.entityID, segs.size(), ss.totalSegments, badPacketsDropped_, net_.lastServerSeq);
+                    Log()->Warning("[Net] Dropped full update: snake points read mismatch. entityID={} expectedPoints={} gotPoints={} dropped={} seq={}",
+                                   entry.entityID, ss.pointsCount, segs.size(), badPacketsDropped_, net_.lastServerSeq);
                     net_.pendingFullRequest = true;
+                    net_.pendingFullRequestAllSegments = true;
                     return;
                 }
 
-                s->NetSetFullSegments(segs);
-
-                snakesByID_[entry.entityID] = s;
-                snakes_.insert(s);
-
-                snakesTTL_[entry.entityID].lastSeenSeq = net_.lastServerSeq;
+                UpsertSnakeFull(entry.entityID, ss, segs, true);
 
                 if (entry.entityID == playerEntityID_)
                 {
-                    clientSnake_ = s;
-
-                    if (samples.size() == static_cast<std::size_t>(ss.totalSegments))
-                    {
-                        playerBuiltExact = true;
-                    }
+                    playerBuiltExact = true;
                 }
             }
             else if (entry.type == EntityType::Food)
@@ -685,6 +776,7 @@ namespace Core::App::Game
                     Log()->Warning("[Net] Dropped full update: failed to read FoodState. entityID={} dropped={} seq={}",
                                    entry.entityID, badPacketsDropped_, net_.lastServerSeq);
                     net_.pendingFullRequest = true;
+                    net_.pendingFullRequestAllSegments = true;
                     return;
                 }
 
@@ -702,6 +794,7 @@ namespace Core::App::Game
                 Log()->Warning("[Net] Dropped full update: unknown entity type. type={} entityID={} dropped={} seq={}",
                                static_cast<std::uint32_t>(entry.type), entry.entityID, badPacketsDropped_, net_.lastServerSeq);
                 net_.pendingFullRequest = true;
+                net_.pendingFullRequestAllSegments = true;
                 return;
             }
         }
@@ -722,6 +815,58 @@ namespace Core::App::Game
                                playerEntityID_, clientSnake_ ? clientSnake_->Segments().size() : 0);
             }
         }
+    }
+
+    void GameClient::ApplySnakeSnapshot(Utils::Legacy::Game::Net::ByteReader& reader)
+    {
+        using namespace Utils::Legacy::Game::Net;
+
+        // Snapshot payload contains exactly one EntityEntryHeader + SnakeState + points
+        EntityEntryHeader entry{};
+        if (!reader.ReadPod(entry))
+        {
+            badPacketsDropped_++;
+            Log()->Warning("[Net] Dropped snake snapshot: failed to read EntityEntryHeader. dropped={}", badPacketsDropped_);
+            net_.pendingFullRequest = true;
+            net_.pendingFullRequestAllSegments = true;
+            return;
+        }
+
+        if (entry.type != EntityType::Snake)
+        {
+            badPacketsDropped_++;
+            Log()->Warning("[Net] Dropped snake snapshot: entry.type != Snake. type={} entityID={} dropped={}",
+                           static_cast<std::uint32_t>(entry.type), entry.entityID, badPacketsDropped_);
+            return;
+        }
+
+        SnakeState ss{};
+        if (!reader.ReadPod(ss))
+        {
+            badPacketsDropped_++;
+            Log()->Warning("[Net] Dropped snake snapshot: failed to read SnakeState. entityID={} dropped={}",
+                           entry.entityID, badPacketsDropped_);
+            return;
+        }
+
+        if (ss.pointsKind != SnakePointsKind::FullSegments || ss.pointsCount != ss.totalSegments || ss.totalSegments == 0)
+        {
+            badPacketsDropped_++;
+            Log()->Warning("[Net] Dropped snake snapshot: invalid kind/count. entityID={} kind={} pointsCount={} totalSegments={} dropped={}",
+                           entry.entityID, static_cast<std::uint32_t>(ss.pointsKind), ss.pointsCount, ss.totalSegments, badPacketsDropped_);
+            return;
+        }
+
+        const auto segs = ReadSnakePoints(reader, ss.pointsCount);
+        if (segs.size() != ss.pointsCount)
+        {
+            badPacketsDropped_++;
+            Log()->Warning("[Net] Dropped snake snapshot: points read mismatch. entityID={} expected={} got={} dropped={}",
+                           entry.entityID, ss.pointsCount, segs.size(), badPacketsDropped_);
+            return;
+        }
+
+        UpsertSnakeFull(entry.entityID, ss, segs, true);
     }
 
     void GameClient::ApplyPartialUpdate(Utils::Legacy::Game::Net::ByteReader& reader)
@@ -754,29 +899,63 @@ namespace Core::App::Game
                     Log()->Warning("[Net] Dropped partial update: failed to read SnakeState. entityID={} dropped={} seq={}",
                                    entry.entityID, badPacketsDropped_, net_.lastServerSeq);
                     net_.pendingFullRequest = true;
+                    net_.pendingFullRequestAllSegments = true;
                     return;
                 }
 
-                if (ss.totalSegments == 0 || ss.sampleCount > ss.totalSegments || ss.sampleCount > 12)
+                if (ss.totalSegments == 0 || ss.pointsCount == 0)
                 {
                     badPacketsDropped_++;
-                    Log()->Warning("[Net] Dropped partial update: invalid SnakeState fields. entityID={} totalSegments={} sampleCount={} dropped={} seq={}",
-                                   entry.entityID, ss.totalSegments, ss.sampleCount, badPacketsDropped_, net_.lastServerSeq);
+                    Log()->Warning("[Net] Dropped partial update: invalid SnakeState fields. entityID={} totalSegments={} pointsCount={} dropped={} seq={}",
+                                   entry.entityID, ss.totalSegments, ss.pointsCount, badPacketsDropped_, net_.lastServerSeq);
                     net_.pendingFullRequest = true;
+                    net_.pendingFullRequestAllSegments = true;
                     return;
                 }
 
-                const auto samples = ReadSnakeSamples(reader, ss.sampleCount);
-                if (samples.size() != ss.sampleCount)
+                // safety
+                constexpr std::uint32_t maxReasonableSegments = 60'000;
+                if (ss.totalSegments > maxReasonableSegments || ss.pointsCount > maxReasonableSegments)
                 {
                     badPacketsDropped_++;
-                    Log()->Warning("[Net] Dropped partial update: samples read mismatch. entityID={} expectedSamples={} gotSamples={} dropped={} seq={}",
-                                   entry.entityID, ss.sampleCount, samples.size(), badPacketsDropped_, net_.lastServerSeq);
+                    Log()->Warning("[Net] Dropped partial update: insane segment counts. entityID={} totalSegments={} pointsCount={} dropped={} seq={}",
+                                   entry.entityID, ss.totalSegments, ss.pointsCount, badPacketsDropped_, net_.lastServerSeq);
                     net_.pendingFullRequest = true;
+                    net_.pendingFullRequestAllSegments = true;
                     return;
                 }
 
-                UpsertSnake(entry.entityID, ss, samples, isNew);
+                const auto points = ReadSnakePoints(reader, ss.pointsCount);
+                if (points.size() != ss.pointsCount)
+                {
+                    badPacketsDropped_++;
+                    Log()->Warning("[Net] Dropped partial update: points read mismatch. entityID={} expectedPoints={} gotPoints={} dropped={} seq={}",
+                                   entry.entityID, ss.pointsCount, points.size(), badPacketsDropped_, net_.lastServerSeq);
+                    net_.pendingFullRequest = true;
+                    net_.pendingFullRequestAllSegments = true;
+                    return;
+                }
+
+                if (ss.pointsKind == SnakePointsKind::FullSegments)
+                {
+                    // New snake must always send full segments; also server can resend full occasionally if it wants
+                    if (ss.pointsCount != ss.totalSegments)
+                    {
+                        badPacketsDropped_++;
+                        Log()->Warning("[Net] Dropped partial snake FULL: pointsCount != totalSegments. entityID={} pointsCount={} totalSegments={} dropped={} seq={}",
+                                       entry.entityID, ss.pointsCount, ss.totalSegments, badPacketsDropped_, net_.lastServerSeq);
+                        net_.pendingFullRequest = true;
+                        net_.pendingFullRequestAllSegments = true;
+                        return;
+                    }
+
+                    UpsertSnakeFull(entry.entityID, ss, points, isNew);
+                }
+                else
+                {
+                    // Validation samples only (do not build unknown snakes!)
+                    ApplySnakeValidationUpdate(entry.entityID, ss, points, isNew);
+                }
             }
             else if (entry.type == EntityType::Food)
             {
@@ -787,6 +966,7 @@ namespace Core::App::Game
                     Log()->Warning("[Net] Dropped partial update: failed to read FoodState. entityID={} dropped={} seq={}",
                                    entry.entityID, badPacketsDropped_, net_.lastServerSeq);
                     net_.pendingFullRequest = true;
+                    net_.pendingFullRequestAllSegments = true;
                     return;
                 }
 
@@ -798,6 +978,7 @@ namespace Core::App::Game
                 Log()->Warning("[Net] Dropped partial update: unknown entity type. type={} entityID={} dropped={} seq={}",
                                static_cast<std::uint32_t>(entry.type), entry.entityID, badPacketsDropped_, net_.lastServerSeq);
                 net_.pendingFullRequest = true;
+                net_.pendingFullRequestAllSegments = true;
                 return;
             }
         }
@@ -805,13 +986,13 @@ namespace Core::App::Game
 
     // ===================== helpers (non-static) =====================
 
-    std::vector<sf::Vector2f> ReadSnakeSamples(Utils::Legacy::Game::Net::ByteReader& r,
-                                               const std::uint8_t count)
+    std::vector<sf::Vector2f> ReadSnakePoints(Utils::Legacy::Game::Net::ByteReader& r,
+                                             const std::uint16_t count)
     {
         std::vector<sf::Vector2f> out;
         out.reserve(count);
 
-        for (std::uint8_t i = 0; i < count; ++i)
+        for (std::uint16_t i = 0; i < count; ++i)
         {
             sf::Vector2f v{};
             if (!r.ReadVector2f(v))
@@ -825,75 +1006,62 @@ namespace Core::App::Game
         return out;
     }
 
-    std::vector<sf::Vector2f> BuildExpectedSampleIndices(const std::list<sf::Vector2f>& segments,
-                                                         const std::size_t desiredCount)
+    std::vector<sf::Vector2f> BuildExpectedSamplesByRadius(const std::list<sf::Vector2f>& segments,
+                                                           const float minDist)
     {
-        std::vector<sf::Vector2f> result;
+        std::vector<sf::Vector2f> out;
 
-        const std::size_t n = segments.size();
-        if (n == 0 || desiredCount == 0)
+        if (segments.empty())
         {
-            return result;
+            return out;
         }
-
-        const std::size_t count = std::min(desiredCount, n);
-        result.reserve(count);
 
         std::vector<sf::Vector2f> segVec(segments.begin(), segments.end());
+        const std::size_t n = segVec.size();
 
-        const std::size_t firstCount = std::min<std::size_t>(6, count);
-        for (std::size_t i = 0; i < firstCount; ++i)
+        out.reserve(n);
+
+        sf::Vector2f last = segVec[0];
+        out.push_back(last);
+
+        for (std::size_t i = 1; i < n; ++i)
         {
-            result.push_back(segVec[i]);
-        }
+            const auto& p = segVec[i];
+            const float dx = p.x - last.x;
+            const float dy = p.y - last.y;
+            const float dist = std::hypot(dx, dy);
 
-        if (count <= firstCount)
-        {
-            return result;
-        }
-
-        const std::size_t remaining = count - firstCount;
-
-        const std::size_t start = firstCount;
-        const std::size_t end   = n - 1;
-
-        if (start >= n)
-        {
-            return result;
-        }
-
-        const std::size_t range = end - start;
-
-        if (remaining == 1)
-        {
-            result.push_back(segVec[end]);
-            return result;
-        }
-
-        for (std::size_t k = 0; k < remaining; ++k)
-        {
-            const float t = static_cast<float>(k) / static_cast<float>(remaining - 1);
-            const std::size_t idx = start + static_cast<std::size_t>(std::round(t * static_cast<float>(range)));
-
-            if (idx < n)
+            if (dist >= minDist)
             {
-                result.push_back(segVec[idx]);
+                out.push_back(p);
+                last = p;
             }
         }
 
-        return result;
+        // ensure tail included
+        if (n >= 2)
+        {
+            const auto& tail = segVec.back();
+            if (out.empty() || (out.back().x != tail.x || out.back().y != tail.y))
+            {
+                out.push_back(tail);
+            }
+        }
+
+        return out;
     }
 
-    bool ValidateSamples(const std::list<sf::Vector2f>& predicted,
-                         const std::vector<sf::Vector2f>& serverSamples,
-                         const float threshold)
+    bool ValidateSamplesByRadius(const std::list<sf::Vector2f>& predicted,
+                                 const std::vector<sf::Vector2f>& serverSamples,
+                                 const float minDist,
+                                 const float threshold)
     {
         if (serverSamples.empty())
         {
             return true;
         }
 
-        const auto expected = BuildExpectedSampleIndices(predicted, serverSamples.size());
+        const auto expected = BuildExpectedSamplesByRadius(predicted, minDist);
 
         if (expected.size() != serverSamples.size())
         {
@@ -901,8 +1069,11 @@ namespace Core::App::Game
         }
 
         std::size_t bad = 0;
+        const std::size_t n = expected.size();
 
-        for (std::size_t i = 0; i < expected.size(); ++i)
+        const std::size_t allowed = std::max<std::size_t>(2, n / 10);
+
+        for (std::size_t i = 0; i < n; ++i)
         {
             const float dx = expected[i].x - serverSamples[i].x;
             const float dy = expected[i].y - serverSamples[i].y;
@@ -912,10 +1083,14 @@ namespace Core::App::Game
             if (dist > threshold)
             {
                 bad++;
+                if (bad > allowed)
+                {
+                    return false;
+                }
             }
         }
 
-        return bad <= 2;
+        return true;
     }
 
 } // namespace Core::App::Game
