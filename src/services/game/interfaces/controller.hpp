@@ -12,6 +12,38 @@ namespace Core::App::Game
         class Controller: public BaseServiceInterface, public BaseServiceInstance
         {
         public:
+            struct Profile
+            {
+                bool loggedIn_ = false;
+                uint32_t playerID_ = 0;
+                uint32_t experience_ = 0;
+                std::string login_;
+
+                void Login(const std::string & login, const uint32_t playerID, const uint32_t experience)
+                {
+                    loggedIn_ = true;
+                    login_ = login;
+                    playerID_ = playerID;
+                    experience_ = experience;
+                }
+
+                void Logout()
+                {
+                    loggedIn_ = false;
+                }
+            };
+
+            struct Stats
+            {
+                struct Session
+                {
+                    uint32_t sessionID_ = 0;
+                    uint32_t players_ = 0;
+                };
+
+                std::vector<Session> sessions_;
+            };
+        public:
             using Shared = std::shared_ptr<Controller>;
 
             [[nodiscard]] virtual MainState GetMainState() const = 0;
@@ -22,9 +54,15 @@ namespace Core::App::Game
 
             virtual Utils::Task<ActionResult<>> PerformRegister(std::string login, std::string password) = 0;
 
+            virtual void Logout() = 0;
+
+            virtual Utils::Task<ActionResult<Stats>> GetStats() = 0;
+
             virtual Utils::Task<ActionResult<>> JoinSession(uint32_t sessionID) = 0;
 
             [[nodiscard]] virtual GameClient::Shared GetCurrentGameClient() const = 0;
+
+            [[nodiscard]] virtual const Profile & GetProfile() const = 0;
 
             virtual void ExitToMenu() = 0;
         };

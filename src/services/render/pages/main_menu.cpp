@@ -1,5 +1,8 @@
 #include "main_menu.hpp"
 
+#include <chrono>
+using namespace std::chrono_literals;
+
 namespace Core::App::Render::Pages {
 
     [[maybe_unused]] [[gnu::used]] Utils::Service::Loader::Add<MainMenu> MainMenuPage(PagesLoader());
@@ -119,6 +122,19 @@ namespace Core::App::Render::Pages {
         gameController_ = IFace().Get<GameController>();
     }
 
+    void MainMenu::ProcessTick()
+    {
+        if (gameController_->GetMainState() != Game::MainState_Menu)
+            return;
+
+        const auto now = std::chrono::steady_clock::now();
+
+        if (now - lastUpdate_ >= 10s)
+        {
+            LoadStats();
+            lastUpdate_ = std::chrono::steady_clock::now();
+        }
+    }
 
     void MainMenu::HandleEvent(sf::Event& event, sf::RenderWindow& window)
     {
@@ -142,6 +158,11 @@ namespace Core::App::Render::Pages {
         auto& window = GetController()->Window();
         if (!window.isOpen())
             return;
+
+        auto & profile = gameController_->GetProfile();
+
+        ui.accountLogin->SetText("User: " + profile.login_);
+        ui.accountMaxExp->SetText("Max exp: " + std::to_string(profile.experience_));
 
         ui.title->Update();
 
@@ -267,7 +288,7 @@ namespace Core::App::Render::Pages {
         });
 
         ui.accountLogin = UI::Components::Text::Create({
-            .text = "demo_user",
+            .text = "User: demo_user",
             .font = "assets/fonts/Roboto-Regular.ttf",
             .characterSize = 20,
             .position = { accLT.x + 18.f, accLT.y + 58.f },
@@ -304,7 +325,7 @@ namespace Core::App::Render::Pages {
         });
         ui.logout->SetStyles(DangerNormal(), DangerHover(), DangerPressed(), ButtonDisabled());
         ui.logout->Events().HookEvent(UI::Components::Button::Event::Click) =
-            std::function<void()>([] { /* пусто */ });
+            std::function<void()>([this] { OnLogoutClick(); });
 
         // =========================================================
         // Bottom: Lobbies list (inside container)
@@ -399,6 +420,25 @@ namespace Core::App::Render::Pages {
         }
     }
 
+    void MainMenu::LoadStats()
+    {
+        gameController_->GetStats() = [this](const Game::ActionResult<GameController::Stats> & stats) {
+            if (!stats.success)
+            {
+                Log()->Error("GetStats failed: {}", stats.error);
+                return;
+            }
+
+            int i = 0;
+            for (auto & session: stats.result.sessions_)
+            {
+                ui.lobbies[i].players->SetText(std::to_string(session.players_) + "/50");
+
+                i++;
+            }
+        };
+    }
+
     void MainMenu::OnPlayClick()
     {
         OnPlaySessionClick(1);
@@ -410,4 +450,10 @@ namespace Core::App::Render::Pages {
             Log()->Debug("OnPlaySessionClick({}): {}", id, result.success ? "success" : "failed");
         };
     }
+
+    void MainMenu::OnLogoutClick()
+    {
+        gameController_->Logout();
+    }
+
 } // namespace Core::App::Render::Pages

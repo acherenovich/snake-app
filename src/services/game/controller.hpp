@@ -23,6 +23,9 @@ namespace Core::App::Game
         Storage::Shared localStorage_;
 
         GameClient::Shared gameClient_;
+
+        Profile profile_;
+
     public:
         using Shared = std::shared_ptr<Controller>;
 
@@ -44,9 +47,15 @@ namespace Core::App::Game
 
         Utils::Task<ActionResult<>> PerformRegister(std::string login, std::string password) override;
 
+        void Logout() override;
+
+        Utils::Task<ActionResult<Stats>> GetStats() override;
+
         Utils::Task<ActionResult<>> JoinSession(uint32_t sessionID) override;
 
         Interface::GameClient::Shared GetCurrentGameClient() const override;
+
+        const Profile & GetProfile() const override;
 
         void ExitToMenu() override;
     private:

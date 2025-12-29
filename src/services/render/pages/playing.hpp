@@ -34,6 +34,12 @@ namespace Core::App::Render::Pages {
         sf::Font font;
         sf::Shader glowShader, snakeShader;
         sf::Texture whiteTexture;
+        sf::RenderTexture snakeSoftRT_;
+        sf::RenderTexture blurPingRT_;
+        sf::RenderTexture blurPongRT_;
+        sf::Shader blurShader_;
+
+        sf::Vector2u blurRTSize_ { 0u, 0u };
 
         uint32_t frame_ = 0;
 

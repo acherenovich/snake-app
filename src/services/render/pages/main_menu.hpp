@@ -53,9 +53,13 @@ namespace Core::App::Render::Pages {
 
         Client::Shared client_;
         GameController::Shared gameController_;
+
+        std::chrono::steady_clock::time_point lastUpdate_ = std::chrono::steady_clock::time_point(std::chrono::steady_clock::duration::zero());
     public:
         void Initialise() override;
         void OnAllInterfacesLoaded() override;
+
+        void ProcessTick() override;
 
         void UpdateScene() override;
         void HandleEvent(sf::Event& event, sf::RenderWindow& window) override;
@@ -68,8 +72,12 @@ namespace Core::App::Render::Pages {
     private:
         void BuildLayout();
 
+        void LoadStats();
+
         void OnPlayClick();
         void OnPlaySessionClick(uint32_t id);
+
+        void OnLogoutClick();
     };
 
 } // namespace Core::App::Render::Pages

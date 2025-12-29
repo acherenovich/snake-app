@@ -73,6 +73,7 @@ namespace Core::App::Game
         else
             localStorage_->Delete("snake_user_token");
 
+        profile_.Login(std::string(response.Login().value_or("")), response.PlayerId().value_or(0), response.Experience().value_or(0));
         SetMainState(MainState_Menu);
 
         co_return {.success = true};
@@ -96,6 +97,7 @@ namespace Core::App::Game
 
         localStorage_->Save("snake_user_token", boost::json::string(response.Token().value()));
 
+        profile_.Login(std::string(response.Login().value_or("")), response.PlayerId().value_or(0), response.Experience().value_or(0));
         SetMainState(MainState_Menu);
 
         co_return {.success = true};
@@ -120,10 +122,51 @@ namespace Core::App::Game
 
         localStorage_->Save("snake_user_token", boost::json::string(response.Token().value()));
 
+        profile_.Login(std::string(response.Login().value_or("")), response.PlayerId().value_or(0), response.Experience().value_or(0));
         SetMainState(MainState_Menu);
 
         co_return {.success = true};
     }
+
+    void Controller::Logout()
+    {
+        localStorage_->Delete("snake_user_token");
+        client_->Send("player_session::logout", {});
+        SetMainState(MainState_Login);
+        profile_.Logout();
+    }
+
+    Utils::Task<ActionResult<Controller::Stats>> Controller::GetStats()
+    {
+        if (!client_->IsConnected())
+            co_return {.success = false};
+
+        const auto message = co_await client_->Request("player_session::stats", {});
+        if (!message)
+            co_return {.error = "timeout"};
+
+        auto & json = message->GetBody();
+
+        Stats stats;
+
+        try {
+            for (auto sessionJson: json["body"].as_object()["sessions"].as_array())
+            {
+                auto sessionVal = sessionJson.as_object();
+
+                auto & [sessionID_, players_] = stats.sessions_.emplace_back();
+                sessionID_= sessionVal["id"].as_int64();
+                players_ = sessionVal["players"].as_int64();
+            }
+        }
+        catch (...)
+        {
+            co_return {.success = false};
+        }
+
+        co_return {.success = true, .result = stats};
+    }
+
 
     Utils::Task<ActionResult<>> Controller::JoinSession(uint32_t sessionID)
     {
@@ -137,6 +180,11 @@ namespace Core::App::Game
     Interface::GameClient::Shared Controller::GetCurrentGameClient() const
     {
         return gameClient_;
+    }
+
+    const Controller::Profile & Controller::GetProfile() const
+    {
+        return profile_;
     }
 
     void Controller::ExitToMenu()
