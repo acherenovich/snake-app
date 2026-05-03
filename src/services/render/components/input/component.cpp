@@ -1,12 +1,11 @@
 #include "component.hpp"
 
 #include <cmath>
-
 #include <SFML/System/Utf.hpp>
 
 namespace Core::App::Render::UI::Components {
 
-    static sf::Color WithAlpha(sf::Color c, sf::Uint8 a)
+    static sf::Color WithAlpha(sf::Color c, std::uint8_t a)
     {
         c.a = a;
         return c;
@@ -20,9 +19,9 @@ namespace Core::App::Render::UI::Components {
     static std::string SfStringToUtf8(const sf::String& s)
     {
         std::string out;
-        out.reserve(s.getSize() * 4); // UTF-8 до 4 байт на символ
+        out.reserve(s.getSize() * 4);
 
-        const auto u32 = s.toUtf32(); // std::basic_string<sf::Uint32>
+        const auto u32 = s.toUtf32();
         sf::Utf<32>::toUtf8(u32.begin(), u32.end(), std::back_inserter(out));
 
         return out;
@@ -31,14 +30,16 @@ namespace Core::App::Render::UI::Components {
     Input::Input(Config cfg)
         : config_(std::move(cfg))
         , enabled_(config_.enabled)
+        , text_(font_)
+        , placeholderText_(font_)
     {
         // font
         if (!config_.font.empty())
         {
-            const bool ok = font_.loadFromFile(config_.font);
-            if (!ok && config_.requireFont)
+            fontLoaded_ = font_.openFromFile(config_.font);
+            if (!fontLoaded_ && config_.requireFont)
             {
-                // оставим компонент живым, но текст может не отрисоваться
+                // leave alive (no text will be visible)
             }
         }
 
@@ -46,6 +47,12 @@ namespace Core::App::Render::UI::Components {
         value32_ = Utf8ToSfString(config_.value);
         placeholder32_ = Utf8ToSfString(config_.placeholder);
         mask32_ = Utf8ToSfString(config_.passwordMask);
+
+        // clamp maxLength
+        if (value32_.getSize() > config_.maxLength)
+            value32_ = value32_.substring(0, config_.maxLength);
+
+        caret_ = value32_.getSize();
 
         // box
         box_.setPosition(config_.position);
@@ -58,13 +65,11 @@ namespace Core::App::Render::UI::Components {
         caretRect_.setFillColor(config_.caretStyle.color);
         caretRect_.setSize({ config_.caretStyle.width, config_.size.y - config_.caretStyle.paddingTopBottom * 2.f });
 
-        // texts
-        text_.setFont(font_);
+        // text
         text_.setCharacterSize(config_.textStyle.size);
         text_.setFillColor(config_.textStyle.color);
         text_.setStyle(config_.textStyle.sfmlStyle);
 
-        placeholderText_.setFont(font_);
         placeholderText_.setCharacterSize(config_.placeholderStyle.size);
         placeholderText_.setFillColor(config_.placeholderStyle.color);
         placeholderText_.setStyle(config_.placeholderStyle.sfmlStyle);
@@ -72,18 +77,13 @@ namespace Core::App::Render::UI::Components {
         caretClock_.restart();
         pulseClock_.restart();
 
-        // draw order
-        drawables_.push_back(&box_);
-        drawables_.push_back(&selectionRect_);
-        drawables_.push_back(&placeholderText_);
-        drawables_.push_back(&text_);
-        drawables_.push_back(&caretRect_);
-
-        // clamp maxLength (characters)
-        if (value32_.getSize() > config_.maxLength)
-            value32_ = value32_.substring(0, config_.maxLength);
-
-        caret_ = value32_.getSize();
+        drawables_ = {
+            &box_,
+            &selectionRect_,
+            &placeholderText_,
+            &text_,
+            &caretRect_
+        };
 
         ApplyVisualState(enabled_ ? VisualState::Normal : VisualState::Disabled);
 
@@ -114,6 +114,7 @@ namespace Core::App::Render::UI::Components {
 
         caret_ = std::min<std::size_t>(caret_, value32_.getSize());
         ClearSelection();
+
         RebuildTextObjects();
         caretClock_.restart();
     }
@@ -126,10 +127,8 @@ namespace Core::App::Render::UI::Components {
         focused_ = focused;
         caretClock_.restart();
 
-        if (focused_)
-            events_.CallEvent(Event::Focus);
-        else
-            events_.CallEvent(Event::Blur);
+        if (focused_) events_.CallEvent(Event::Focus);
+        else events_.CallEvent(Event::Blur);
 
         if (!focused_)
             ClearSelection();
@@ -144,7 +143,8 @@ namespace Core::App::Render::UI::Components {
 
     void Input::Update(const sf::RenderWindow& window)
     {
-        hovered_ = enabled_ && ContainsPoint(window, sf::Mouse::getPosition(window).x, sf::Mouse::getPosition(window).y);
+        const auto m = sf::Mouse::getPosition(window);
+        hovered_ = enabled_ && ContainsPoint(window, m.x, m.y);
 
         if (!enabled_)
             ApplyVisualState(VisualState::Disabled);
@@ -167,12 +167,13 @@ namespace Core::App::Render::UI::Components {
             caretVisible_ = false;
         }
 
-        // placeholder pulse (only if shown)
+        // placeholder pulse
         if (config_.placeholderStyle.pulseAlpha && value32_.isEmpty() && !focused_)
         {
             const float t = pulseClock_.getElapsedTime().asSeconds();
             const float s = (std::sin(t * config_.placeholderStyle.pulseSpeed) + 1.f) * 0.5f;
-            const auto a = static_cast<sf::Uint8>(config_.placeholderStyle.pulseMin + s * (config_.placeholderStyle.pulseMax - config_.placeholderStyle.pulseMin));
+            const auto a = static_cast<std::uint8_t>(config_.placeholderStyle.pulseMin +
+                                                     s * (config_.placeholderStyle.pulseMax - config_.placeholderStyle.pulseMin));
             placeholderText_.setFillColor(WithAlpha(config_.placeholderStyle.color, a));
         }
         else
@@ -191,58 +192,59 @@ namespace Core::App::Render::UI::Components {
         if (!enabled_)
             return;
 
-        if (e.type == sf::Event::MouseMoved)
+        if (const auto* ev = e.getIf<sf::Event::MouseMoved>())
         {
-            hovered_ = ContainsPoint(window, e.mouseMove.x, e.mouseMove.y);
+            hovered_ = ContainsPoint(window, ev->position.x, ev->position.y);
             return;
         }
 
-        if (e.type == sf::Event::MouseButtonPressed && e.mouseButton.button == sf::Mouse::Left)
+        if (const auto* ev = e.getIf<sf::Event::MouseButtonPressed>())
         {
-            const bool inside = ContainsPoint(window, e.mouseButton.x, e.mouseButton.y);
-            SetFocused(inside);
-
-            if (inside)
+            if (ev->button == sf::Mouse::Button::Left)
             {
-                const sf::Vector2f click = window.mapPixelToCoords({ e.mouseButton.x, e.mouseButton.y });
+                const bool inside = ContainsPoint(window, ev->position.x, ev->position.y);
+                SetFocused(inside);
 
-                std::size_t best = 0;
-                float bestDist = std::numeric_limits<float>::max();
-
-                const auto shown = VisibleString();
-                text_.setString(shown);
-
-                const std::size_t n = shown.getSize();
-                for (std::size_t i = 0; i <= n; ++i)
+                if (inside)
                 {
-                    const float x = TextXForIndex(i);
-                    const float dist = std::fabs((config_.position.x + config_.paddingX + x - scrollX_) - click.x);
-                    if (dist < bestDist)
+                    const sf::Vector2f click = window.mapPixelToCoords(ev->position);
+
+                    std::size_t best = 0;
+                    float bestDist = std::numeric_limits<float>::max();
+
+                    const auto shown = VisibleString();
+                    text_.setString(shown);
+
+                    const std::size_t n = shown.getSize();
+                    for (std::size_t i = 0; i <= n; ++i)
                     {
-                        bestDist = dist;
-                        best = i;
+                        const float x = TextXForIndex(i);
+                        const float dist = std::fabs((config_.position.x + config_.paddingX + x - scrollX_) - click.x);
+                        if (dist < bestDist)
+                        {
+                            bestDist = dist;
+                            best = i;
+                        }
                     }
+
+                    caret_ = best;
+                    ClearSelection();
+                    caretClock_.restart();
                 }
-
-                caret_ = best;
-                ClearSelection();
-                caretClock_.restart();
             }
-
             return;
         }
 
         if (!focused_)
             return;
 
-        if (e.type == sf::Event::TextEntered)
+        if (const auto* ev = e.getIf<sf::Event::TextEntered>())
         {
-            const char32_t u = static_cast<char32_t>(e.text.unicode);
+            const char32_t u = static_cast<char32_t>(ev->unicode);
 
-            // ignore control keys here
-            if (u == 13 || u == 10) return; // Enter
-            if (u == 8) return;             // Backspace
-            if (u == 9) return;             // Tab
+            if (u == U'\r' || u == U'\n') return;
+            if (u == U'\b') return;
+            if (u == U'\t') return;
 
             if (IsAllowedChar(u))
             {
@@ -254,17 +256,17 @@ namespace Core::App::Render::UI::Components {
             return;
         }
 
-        if (e.type == sf::Event::KeyPressed)
+        if (const auto* ev = e.getIf<sf::Event::KeyPressed>())
         {
-            const bool ctrl = e.key.control;
+            const bool ctrl = ev->control;
 
-            switch (e.key.code)
+            switch (ev->code)
             {
-                case sf::Keyboard::Enter:
-                {
+                case sf::Keyboard::Key::Enter:
                     if (config_.submitOnEnter)
                     {
                         events_.CallEvent(Event::Submit);
+
                         if (config_.clearOnSubmit)
                         {
                             value32_.clear();
@@ -275,28 +277,28 @@ namespace Core::App::Render::UI::Components {
                         }
                     }
                     break;
-                }
-                case sf::Keyboard::BackSpace:
-                {
+
+                case sf::Keyboard::Key::Backspace:
                     if (HasSelection()) DeleteSelection();
                     else Backspace();
                     events_.CallEvent(Event::Changed);
                     break;
-                }
-                case sf::Keyboard::Delete:
-                {
+
+                case sf::Keyboard::Key::Delete:
                     if (HasSelection()) DeleteSelection();
                     else Delete();
                     events_.CallEvent(Event::Changed);
                     break;
-                }
-                case sf::Keyboard::Left:  MoveCaretLeft(ctrl); break;
-                case sf::Keyboard::Right: MoveCaretRight(ctrl); break;
-                case sf::Keyboard::Home:  MoveCaretHome(); break;
-                case sf::Keyboard::End:   MoveCaretEnd(); break;
-                case sf::Keyboard::A:
+
+                case sf::Keyboard::Key::Left:  MoveCaretLeft(ctrl); break;
+                case sf::Keyboard::Key::Right: MoveCaretRight(ctrl); break;
+                case sf::Keyboard::Key::Home:  MoveCaretHome(); break;
+                case sf::Keyboard::Key::End:   MoveCaretEnd(); break;
+
+                case sf::Keyboard::Key::A:
                     if (ctrl) SelectAll();
                     break;
+
                 default:
                     break;
             }
@@ -309,13 +311,11 @@ namespace Core::App::Render::UI::Components {
     void Input::RebuildTextObjects()
     {
         text_.setString(VisibleString());
-        placeholderText_.setString(placeholder32_);
         UpdatePlaceholderVisibility();
     }
 
     void Input::UpdatePlaceholderVisibility()
     {
-        // placeholder visible only when empty
         if (!placeholder32_.isEmpty() && value32_.isEmpty())
             placeholderText_.setString(placeholder32_);
         else
@@ -327,11 +327,7 @@ namespace Core::App::Render::UI::Components {
         box_.setPosition(config_.position);
         box_.setSize(config_.size);
 
-        const auto centerY = config_.position.y + config_.size.y * 0.5f;
-
-        // set sizes/styles each tick (ok)
-        text_.setFont(font_);
-        placeholderText_.setFont(font_);
+        const float centerY = config_.position.y + config_.size.y * 0.5f;
 
         text_.setCharacterSize(config_.textStyle.size);
         text_.setStyle(config_.textStyle.sfmlStyle);
@@ -339,7 +335,6 @@ namespace Core::App::Render::UI::Components {
         placeholderText_.setCharacterSize(config_.placeholderStyle.size);
         placeholderText_.setStyle(config_.placeholderStyle.sfmlStyle);
 
-        // base position (left padding + scroll)
         const sf::Vector2f basePos {
             config_.position.x + config_.paddingX - scrollX_,
             config_.position.y
@@ -348,17 +343,17 @@ namespace Core::App::Render::UI::Components {
         if (config_.verticalCenterText)
         {
             const auto tb = text_.getLocalBounds();
-            const float y = centerY - (tb.height * 0.5f) - tb.top;
-            text_.setPosition(basePos.x, y);
+            const float y = centerY - (tb.size.y * 0.5f) - tb.position.y;
+            text_.setPosition({ basePos.x, y });
 
             const auto pb = placeholderText_.getLocalBounds();
-            const float py = centerY - (pb.height * 0.5f) - pb.top;
-            placeholderText_.setPosition(config_.position.x + config_.paddingX - scrollX_, py);
+            const float py = centerY - (pb.size.y * 0.5f) - pb.position.y;
+            placeholderText_.setPosition({ config_.position.x + config_.paddingX - scrollX_, py });
         }
         else
         {
-            text_.setPosition(basePos.x, config_.position.y + 6.f);
-            placeholderText_.setPosition(config_.position.x + config_.paddingX - scrollX_, config_.position.y + 6.f);
+            text_.setPosition({ basePos.x, config_.position.y + 6.f });
+            placeholderText_.setPosition({ config_.position.x + config_.paddingX - scrollX_, config_.position.y + 6.f });
         }
     }
 
@@ -388,7 +383,7 @@ namespace Core::App::Render::UI::Components {
         if (!config_.allowNewLine && (u == U'\n' || u == U'\r'))
             return false;
 
-        if (!config_.allowSpaces && (u == U' '))
+        if (!config_.allowSpaces && u == U' ')
             return false;
 
         if (u < 32)
@@ -420,13 +415,12 @@ namespace Core::App::Render::UI::Components {
         if (HasSelection())
             DeleteSelection();
 
-        // insert at caret (character index)
-        sf::String ins;
-        ins += static_cast<sf::Uint32>(u);
-
         const std::size_t leftLen = std::min(caret_, static_cast<std::size_t>(value32_.getSize()));
         const sf::String left = value32_.substring(0, leftLen);
         const sf::String right = value32_.substring(leftLen);
+
+        sf::String ins;
+        ins += (u); // ✅ SFML3 safe
 
         value32_ = left + ins + right;
 
@@ -444,11 +438,7 @@ namespace Core::App::Render::UI::Components {
             return;
 
         const std::size_t idx = caret_ - 1;
-
-        const sf::String left = value32_.substring(0, idx);
-        const sf::String right = value32_.substring(idx + 1);
-
-        value32_ = left + right;
+        value32_ = value32_.substring(0, idx) + value32_.substring(idx + 1);
         caret_ = idx;
 
         RebuildTextObjects();
@@ -460,11 +450,7 @@ namespace Core::App::Render::UI::Components {
             return;
 
         const std::size_t idx = caret_;
-
-        const sf::String left = value32_.substring(0, idx);
-        const sf::String right = value32_.substring(idx + 1);
-
-        value32_ = left + right;
+        value32_ = value32_.substring(0, idx) + value32_.substring(idx + 1);
 
         RebuildTextObjects();
     }
@@ -526,10 +512,7 @@ namespace Core::App::Render::UI::Components {
         const auto l = std::min(a, b);
         const auto r = std::max(a, b);
 
-        const sf::String left = value32_.substring(0, l);
-        const sf::String right = value32_.substring(r);
-
-        value32_ = left + right;
+        value32_ = value32_.substring(0, l) + value32_.substring(r);
         caret_ = l;
 
         ClearSelection();
@@ -540,11 +523,8 @@ namespace Core::App::Render::UI::Components {
     {
         if (pos == 0) return 0;
 
-        auto s = SfStringToUtf8(value32_);
-        if (pos > s.size()) pos = s.size(); // safe for ascii; for unicode we do better below
+        std::size_t i = std::min(pos, static_cast<std::size_t>(value32_.getSize()));
 
-        // Proper: work on UTF-32 directly
-        std::size_t i = pos;
         while (i > 0)
         {
             const auto ch = static_cast<char32_t>(value32_[static_cast<unsigned int>(i - 1)]);
@@ -588,16 +568,14 @@ namespace Core::App::Render::UI::Components {
     {
         sf::String out;
 
-        // Если маска пустая — используем '*'
         if (mask32_.isEmpty())
         {
             for (std::size_t i = 0; i < count; ++i)
-                out += static_cast<sf::Uint32>(U'*');
+                out += U'*';
 
             return out;
         }
 
-        // mask32_ может быть multi-char (например "●" или "••")
         for (std::size_t i = 0; i < count; ++i)
             out += mask32_;
 
@@ -624,7 +602,6 @@ namespace Core::App::Render::UI::Components {
 
     void Input::EnsureCaretVisible()
     {
-        // ensure based on current shown string
         text_.setString(VisibleString());
 
         const float caretX = TextXForIndex(caret_);

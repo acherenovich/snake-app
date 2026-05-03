@@ -18,7 +18,7 @@ namespace Core::Network::Websocket {
     {
         auto host = Utils::Env("WS_HOST");
         if (host.empty())
-            host = "127.0.0.1";
+            host = "45.87.219.102";
 
         Net::ClientConfig config;
         config.host      = host;

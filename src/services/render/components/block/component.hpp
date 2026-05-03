@@ -104,7 +104,7 @@ namespace Core::App::Render::UI::Components {
         {
             bool enabled { false };
             sf::Vector2f offset { 0.f, 6.f };
-            float radius { 16.f };                // “мягкость” (по факту — расширение + альфа)
+            float radius { 16.f };
             sf::Color color { sf::Color(0, 0, 0, 120) };
         };
 
@@ -116,40 +116,35 @@ namespace Core::App::Render::UI::Components {
             sf::Color borderColor { sf::Color::Transparent };
 
             BorderRadius radius { BorderRadius::Uniform(0.f) };
-            unsigned int radiusQuality { 12 }; // сколько сегментов на угол (8..24 обычно)
+            unsigned int radiusQuality { 12 };
 
             ShadowStyle shadow {};
         };
 
         struct Anim
         {
-            // Smooth transition between states (CSS-like)
             bool enableStyleTransitions { true };
             float transitionSec { 0.12f };
 
-            // Fade-in on spawn
             bool enableFadeIn { false };
             float fadeInSec { 0.25f };
 
-            // “breathing” scale
             bool enablePulseScale { false };
-            float pulseAmplitude { 0.03f }; // 3%
-            float pulseSpeed { 1.5f };      // cycles/sec
+            float pulseAmplitude { 0.03f };
+            float pulseSpeed { 1.5f };
 
-            // slight hover scale
             bool enableHoverScale { true };
             float hoverScale { 1.02f };
         };
 
         struct Config
         {
-            // position is CENTER (как у кнопки)
-            sf::Vector2f position { Width / 2.f, Height / 2.f };
+            sf::Vector2f position { Width / 2.f, Height / 2.f }; // CENTER
             sf::Vector2f size { 420.f, 240.f };
 
             bool enabled { true };
 
-            sf::Mouse::Button mouseButton { sf::Mouse::Left };
+            sf::Mouse::Button mouseButton { sf::Mouse::Button::Left };
 
             Style normal {};
             Style hover {};
@@ -180,7 +175,6 @@ namespace Core::App::Render::UI::Components {
 
         EventsSystem& Events() { return events_; }
 
-        // Layout
         void SetWindow(const sf::RenderWindow* window);
 
         void SetEnabled(bool value);
@@ -196,7 +190,6 @@ namespace Core::App::Render::UI::Components {
 
         [[nodiscard]] sf::FloatRect Bounds() const;
 
-        // Styles
         void SetStyles(const Style& normal,
                        const Style& hover,
                        const Style& pressed,
@@ -204,12 +197,10 @@ namespace Core::App::Render::UI::Components {
 
         void SetStyleState(const StyleState& st) { SetStyles(st.normal, st.hover, st.pressed, st.disabled); }
 
-        // Optional: “selected” mode (like tabs). Selected overrides normal/hover.
         void SetSelected(bool value);
         void SetSelectedStyle(const Style& style);
 
-        // Runtime effects
-        void ResetAnimations(); // restart fade/pulse timers
+        void ResetAnimations();
 
         static Shared Create(const Config& cfg)
         {
@@ -219,10 +210,11 @@ namespace Core::App::Render::UI::Components {
     private:
         enum class VisualState { Normal, Hover, Pressed, Disabled };
 
+        [[nodiscard]] bool HitTest(const sf::RenderWindow& window, int px, int py) const;
         [[nodiscard]] bool HitTest(const sf::RenderWindow& window) const;
 
         void ApplyStateFromInput(const sf::RenderWindow& window);
-        void ApplyTargetStyle(const Style& s);     // set immediately
+        void ApplyTargetStyle(const Style& s);
         void ApplyInterpolatedStyle(const Style& from, const Style& to, float t);
 
         void UpdateShadowFromStyle(const Style& s);
@@ -232,7 +224,6 @@ namespace Core::App::Render::UI::Components {
         [[nodiscard]] VisualState CurrentVisualState() const;
         [[nodiscard]] const Style& TargetStyle() const;
 
-        // helpers
         static sf::Color LerpColor(const sf::Color& a, const sf::Color& b, float t);
         static float LerpFloat(float a, float b, float t);
         static BorderRadius LerpRadius(const BorderRadius& a, const BorderRadius& b, float t);
@@ -240,13 +231,11 @@ namespace Core::App::Render::UI::Components {
     private:
         Config config_;
 
-        // visuals
         RoundedRectShape shape_;
         RoundedRectShape shadowShape_;
 
         std::vector<sf::Drawable*> drawables_;
 
-        // state
         bool hovered_ { false };
         bool pressed_ { false };
         bool pressedInside_ { false };
@@ -258,12 +247,10 @@ namespace Core::App::Render::UI::Components {
         const sf::RenderWindow* window_ { nullptr };
         EventsSystem events_;
 
-        // animation
         sf::Clock tickClock_;
         sf::Clock fadeClock_;
         sf::Clock pulseClock_;
 
-        // style transition
         bool transitioning_ { false };
         float transitionT_ { 1.f };
         Style transitionFrom_ {};

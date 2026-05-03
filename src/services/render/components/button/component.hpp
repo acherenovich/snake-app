@@ -10,6 +10,7 @@
 #include <vector>
 #include <optional>
 #include <algorithm>
+#include <cstdint>
 
 namespace Core::App::Render::UI::Components {
 
@@ -34,7 +35,7 @@ namespace Core::App::Render::UI::Components {
         {
             sf::Color color { sf::Color::White };
             unsigned int size { 22 };
-            sf::Uint32 sfmlStyle { sf::Text::Regular };
+            std::uint32_t sfmlStyle { sf::Text::Style::Regular };
 
             HAlign hAlign { HAlign::Center };
             VAlign vAlign { VAlign::Center };
@@ -69,7 +70,7 @@ namespace Core::App::Render::UI::Components {
             Style pressed {};
             Style disabled {};
 
-            sf::Mouse::Button mouseButton { sf::Mouse::Left };
+            sf::Mouse::Button mouseButton { sf::Mouse::Button::Left };
         };
 
         struct StyleState
@@ -89,8 +90,8 @@ namespace Core::App::Render::UI::Components {
 
         // visuals
         sf::RectangleShape rect_;
-        sf::Text label_;
         sf::Font font_;
+        std::optional<sf::Text> label_;          // SFML3: нет дефолтного конструктора
         std::vector<sf::Drawable*> drawables_;
 
         // state
@@ -107,7 +108,7 @@ namespace Core::App::Render::UI::Components {
         explicit Button(const Config& cfg);
 
         // BaseComponent
-        void Update() override; // noop
+        void Update() override;
         std::vector<sf::Drawable*> Drawables() override;
 
         // preferred
@@ -117,7 +118,7 @@ namespace Core::App::Render::UI::Components {
         // events
         EventsSystem& Events() { return events_; }
 
-        // runtime api (layout)
+        // runtime api
         void SetEnabled(bool value);
         void SetText(const std::string& value);
 
@@ -160,8 +161,10 @@ namespace Core::App::Render::UI::Components {
         [[nodiscard]] bool HitTestMouse(const sf::RenderWindow& window) const;
 
         void SetHovered(bool value);
-
         void ApplyCurrentStyle();
+
+        bool EnsureFontLoaded(); // SFML3 helper
+        void EnsureLabelCreated(); // SFML3 helper
     };
 
 } // namespace Core::App::Render::UI::Components

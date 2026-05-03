@@ -8,7 +8,7 @@ namespace Core::App::Render::UI::Components {
         // Базовый круг (почти незаметный фон под спиннером)
         const float baseRadius = config_.radius - config_.dotRadius;
         baseCircle_.setRadius(baseRadius);
-        baseCircle_.setOrigin(baseRadius, baseRadius);
+        baseCircle_.setOrigin({baseRadius, baseRadius});
         baseCircle_.setOutlineThickness(config_.dotRadius * 2);
         baseCircle_.setFillColor(sf::Color::Transparent);
         baseCircle_.setOutlineColor(sf::Color(255, 255, 255, 10));
@@ -19,7 +19,7 @@ namespace Core::App::Render::UI::Components {
         {
             auto & dot = dots_.emplace_back();
             dot.setRadius(dotRadius);
-            dot.setOrigin(dotRadius, dotRadius);
+            dot.setOrigin({dotRadius, dotRadius});
             dot.setFillColor(sf::Color::White);
         }
 
@@ -60,7 +60,7 @@ namespace Core::App::Render::UI::Components {
 
             // Альфа плавно убывает по индексу точки
             const float t = static_cast<float>(i) / static_cast<float>(config_.dotsCount - 1);
-            const auto alpha = static_cast<sf::Uint8>(50 + (1.f - t) * 205.f);
+            const auto alpha = static_cast<uint8_t>(50 + (1.f - t) * 205.f);
 
             dots_[i].setPosition(pos);
             dots_[i].setFillColor(sf::Color(255, 255, 255, alpha));

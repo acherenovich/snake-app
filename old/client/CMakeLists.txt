@@ -13,7 +13,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR})
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 IF (WIN32)
-    set(SFML_DIR "C:/Libraries/SFML/SFML-2.6.2/lib/cmake/SFML")
+    set(SFML_DIR "C:/Libraries/SFML/SFML-3.0.2.2/lib/cmake/SFML")
     set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++ -static")
 ENDIF ()
 
@@ -21,9 +21,9 @@ add_subdirectory(third_party/zlib)
 
 if(BUILD_CLIENT)
     find_package(OpenGL REQUIRED)
-    find_package(SFML 2.6 COMPONENTS network system graphics REQUIRED)
+    find_package(SFML 3.0.2 COMPONENTS network system graphics REQUIRED)
 else()
-    find_package(SFML 2.6 COMPONENTS network system REQUIRED)
+    find_package(SFML 3.0.2 COMPONENTS network system REQUIRED)
 endif ()
 
 

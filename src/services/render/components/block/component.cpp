@@ -14,18 +14,15 @@ namespace Core::App::Render::UI::Components {
 
     std::size_t RoundedRectShape::getPointCount() const
     {
-        // 4 corners * cornerPointCount_
         return static_cast<std::size_t>(cornerPointCount_) * 4u;
     }
 
     sf::Vector2f RoundedRectShape::getPoint(std::size_t index) const
     {
-        // Points are generated clockwise:
-        // TL corner arc (180..270), TR (270..360), BR (0..90), BL (90..180)
         const unsigned int cp = cornerPointCount_;
-        const unsigned int corner = static_cast<unsigned int>(index / cp);       // 0..3
-        const unsigned int i = static_cast<unsigned int>(index % cp);            // 0..cp-1
-        const float t = static_cast<float>(i) / static_cast<float>(cp - 1);      // 0..1
+        const unsigned int corner = static_cast<unsigned int>(index / cp);
+        const unsigned int i = static_cast<unsigned int>(index % cp);
+        const float t = static_cast<float>(i) / static_cast<float>(cp - 1);
 
         const float tl = ClampRadius(radius_.tl);
         const float tr = ClampRadius(radius_.tr);
@@ -55,7 +52,7 @@ namespace Core::App::Render::UI::Components {
                 r = br;
                 c = { size_.x - br, size_.y - br };
                 break;
-            default: // 3 BL: 90..180
+            default: // BL: 90..180
                 angle0 = 0.5f * PI;
                 r = bl;
                 c = { bl, size_.y - bl };
@@ -77,9 +74,9 @@ namespace Core::App::Render::UI::Components {
 
     sf::Color Block::LerpColor(const sf::Color& a, const sf::Color& b, float t)
     {
-        const auto L = [&](sf::Uint8 x, sf::Uint8 y) -> sf::Uint8 {
+        const auto L = [&](uint8_t x, uint8_t y) -> uint8_t {
             const float v = static_cast<float>(x) + (static_cast<float>(y) - static_cast<float>(x)) * t;
-            return static_cast<sf::Uint8>(std::clamp(v, 0.f, 255.f));
+            return static_cast<uint8_t>(std::clamp(v, 0.f, 255.f));
         };
         return { L(a.r, b.r), L(a.g, b.g), L(a.b, b.b), L(a.a, b.a) };
     }
@@ -102,13 +99,16 @@ namespace Core::App::Render::UI::Components {
     Block::Block(const Config& cfg)
         : config_(cfg)
     {
-        // base geometry: local coords 0..size, origin center
         shape_.SetSize(config_.size);
-        shape_.setOrigin(config_.size.x * 0.5f, config_.size.y * 0.5f);
+        shape_.SetCornerPointCount(std::max(2u, config_.normal.radiusQuality));
+        shape_.SetRadius(ToShapeRadius(config_.normal.radius));
+        shape_.setOrigin({ config_.size.x * 0.5f, config_.size.y * 0.5f });
         shape_.setPosition(config_.position);
 
         shadowShape_.SetSize(config_.size);
-        shadowShape_.setOrigin(config_.size.x * 0.5f, config_.size.y * 0.5f);
+        shadowShape_.SetCornerPointCount(std::max(2u, config_.normal.radiusQuality));
+        shadowShape_.SetRadius(ToShapeRadius(config_.normal.radius));
+        shadowShape_.setOrigin({ config_.size.x * 0.5f, config_.size.y * 0.5f });
         shadowShape_.setPosition(config_.position);
 
         drawables_.push_back(&shadowShape_);
@@ -118,7 +118,6 @@ namespace Core::App::Render::UI::Components {
         fadeClock_.restart();
         pulseClock_.restart();
 
-        // initial style
         ApplyTargetStyle(TargetStyle());
         ResetAnimations();
     }
@@ -142,14 +141,13 @@ namespace Core::App::Render::UI::Components {
     void Block::SetEnabled(bool value)
     {
         config_.enabled = value;
-
         hovered_ = false;
         pressed_ = false;
         pressedInside_ = false;
         prevMouseDown_ = false;
 
-        // jump to correct state (or animate if enabled)
         const auto& to = TargetStyle();
+
         if (config_.anim.enableStyleTransitions)
         {
             transitioning_ = true;
@@ -175,10 +173,10 @@ namespace Core::App::Render::UI::Components {
         config_.size = size;
 
         shape_.SetSize(config_.size);
-        shape_.setOrigin(config_.size.x * 0.5f, config_.size.y * 0.5f);
+        shape_.setOrigin({ config_.size.x * 0.5f, config_.size.y * 0.5f });
 
         shadowShape_.SetSize(config_.size);
-        shadowShape_.setOrigin(config_.size.x * 0.5f, config_.size.y * 0.5f);
+        shadowShape_.setOrigin({ config_.size.x * 0.5f, config_.size.y * 0.5f });
 
         ApplyTargetStyle(TargetStyle());
     }
@@ -198,8 +196,8 @@ namespace Core::App::Render::UI::Components {
         config_.pressed = pressed;
         config_.disabled = disabled;
 
-        // apply / transition to new target
         const auto& to = TargetStyle();
+
         if (config_.anim.enableStyleTransitions)
         {
             transitioning_ = true;
@@ -218,6 +216,7 @@ namespace Core::App::Render::UI::Components {
         selected_ = value;
 
         const auto& to = TargetStyle();
+
         if (config_.anim.enableStyleTransitions)
         {
             transitioning_ = true;
@@ -236,6 +235,7 @@ namespace Core::App::Render::UI::Components {
         selectedStyle_ = style;
 
         const auto& to = TargetStyle();
+
         if (config_.anim.enableStyleTransitions)
         {
             transitioning_ = true;
@@ -262,39 +262,39 @@ namespace Core::App::Render::UI::Components {
         return drawables_;
     }
 
+    bool Block::HitTest(const sf::RenderWindow& window, int px, int py) const
+    {
+        const sf::Vector2f p = window.mapPixelToCoords({ px, py });
+        return shape_.getGlobalBounds().contains(p);
+    }
+
     bool Block::HitTest(const sf::RenderWindow& window) const
     {
         const auto pixel = sf::Mouse::getPosition(window);
-        const auto world = window.mapPixelToCoords(pixel);
-        return shape_.getGlobalBounds().contains(world);
+        return HitTest(window, pixel.x, pixel.y);
     }
 
     Block::VisualState Block::CurrentVisualState() const
     {
-        if (!config_.enabled)
-            return VisualState::Disabled;
-        if (pressed_)
-            return VisualState::Pressed;
-        if (hovered_)
-            return VisualState::Hover;
+        if (!config_.enabled) return VisualState::Disabled;
+        if (pressed_) return VisualState::Pressed;
+        if (hovered_) return VisualState::Hover;
         return VisualState::Normal;
     }
 
     const Block::Style& Block::TargetStyle() const
     {
-        if (!config_.enabled)
-            return config_.disabled;
+        if (!config_.enabled) return config_.disabled;
 
-        // selected overrides normal/hover, but not pressed (нажатие важнее)
         if (selected_ && selectedStyle_ && !pressed_)
             return *selectedStyle_;
 
         switch (CurrentVisualState())
         {
-            case VisualState::Pressed:  return config_.pressed;
-            case VisualState::Hover:    return config_.hover;
+            case VisualState::Pressed: return config_.pressed;
+            case VisualState::Hover: return config_.hover;
             case VisualState::Disabled: return config_.disabled;
-            default:                    return config_.normal;
+            default: return config_.normal;
         }
     }
 
@@ -303,10 +303,10 @@ namespace Core::App::Render::UI::Components {
         if (!config_.enabled)
             return;
 
-        // Hover tracking via MouseMoved
-        if (event.type == sf::Event::MouseMoved)
+        if (const auto* mm = event.getIf<sf::Event::MouseMoved>())
         {
-            const bool nowHovered = HitTest(window);
+            const bool nowHovered = HitTest(window, mm->position.x, mm->position.y);
+
             if (nowHovered && !hovered_)
             {
                 hovered_ = true;
@@ -320,33 +320,44 @@ namespace Core::App::Render::UI::Components {
             return;
         }
 
-        // Press/Release/Click
-        if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == config_.mouseButton)
+        if (const auto* mp = event.getIf<sf::Event::MouseButtonPressed>())
         {
-            const bool nowHovered = HitTest(window);
-            if (nowHovered && !pressed_)
+            if (mp->button != config_.mouseButton)
+                return;
+
+            const bool inside = HitTest(window, mp->position.x, mp->position.y);
+
+            if (inside)
             {
                 pressed_ = true;
                 pressedInside_ = true;
                 events_.CallEvent(Event::Press);
             }
+            else
+            {
+                pressed_ = false;
+                pressedInside_ = false;
+            }
             return;
         }
 
-        if (event.type == sf::Event::MouseButtonReleased && event.mouseButton.button == config_.mouseButton)
+        if (const auto* mr = event.getIf<sf::Event::MouseButtonReleased>())
         {
-            const bool nowHovered = HitTest(window);
+            if (mr->button != config_.mouseButton)
+                return;
+
+            const bool inside = HitTest(window, mr->position.x, mr->position.y);
 
             if (pressed_)
             {
                 pressed_ = false;
                 events_.CallEvent(Event::Release);
 
-                if (pressedInside_ && nowHovered)
+                if (pressedInside_ && inside)
                     events_.CallEvent(Event::Click);
-
-                pressedInside_ = false;
             }
+
+            pressedInside_ = false;
             return;
         }
     }
@@ -358,7 +369,6 @@ namespace Core::App::Render::UI::Components {
 
         const bool nowHovered = HitTest(window);
 
-        // hover enter/leave
         if (nowHovered && !hovered_)
         {
             hovered_ = true;
@@ -370,7 +380,6 @@ namespace Core::App::Render::UI::Components {
             events_.CallEvent(Event::HoverLeave);
         }
 
-        // press detection fallback (если кто-то не зовёт HandleEvent)
         const bool mouseDown = sf::Mouse::isButtonPressed(config_.mouseButton);
         const bool mouseUp = (prevMouseDown_ && !mouseDown);
         prevMouseDown_ = mouseDown;
@@ -399,21 +408,13 @@ namespace Core::App::Render::UI::Components {
 
     void Block::Update(const sf::RenderWindow& window)
     {
-        // If you already call HandleEvent in your page — still ok.
-        // This also supports “no HandleEvent” usage.
         ApplyStateFromInput(window);
 
         const float dt = tickClock_.restart().asSeconds();
-
-        // style target
         const auto& to = TargetStyle();
 
-        // start transition when target changes
         const bool targetChanged =
-            (to.background.r != transitionTo_.background.r) ||
-            (to.background.g != transitionTo_.background.g) ||
-            (to.background.b != transitionTo_.background.b) ||
-            (to.background.a != transitionTo_.background.a) ||
+            (to.background != transitionTo_.background) ||
             (to.borderThickness != transitionTo_.borderThickness) ||
             (to.borderColor != transitionTo_.borderColor) ||
             (to.radius.tl != transitionTo_.radius.tl) ||
@@ -445,14 +446,11 @@ namespace Core::App::Render::UI::Components {
             }
         }
 
-        // advance transition
         if (transitioning_)
         {
             const float dur = std::max(0.001f, config_.anim.transitionSec);
             transitionT_ = std::min(1.f, transitionT_ + dt / dur);
-
             ApplyInterpolatedStyle(transitionFrom_, transitionTo_, transitionT_);
-
             if (transitionT_ >= 1.f)
                 transitioning_ = false;
         }
@@ -467,6 +465,7 @@ namespace Core::App::Render::UI::Components {
     void Block::ApplyTargetStyle(const Style& s)
     {
         UpdateShapeGeometryFromStyle(s);
+
         shape_.setFillColor(s.background);
         shape_.setOutlineThickness(s.borderThickness);
         shape_.setOutlineColor(s.borderColor);
@@ -483,7 +482,6 @@ namespace Core::App::Render::UI::Components {
         s.radius = LerpRadius(from.radius, to.radius, t);
         s.radiusQuality = (t < 0.5f) ? from.radiusQuality : to.radiusQuality;
 
-        // shadow
         s.shadow.enabled = (t < 0.5f) ? from.shadow.enabled : to.shadow.enabled;
         s.shadow.offset = {
             LerpFloat(from.shadow.offset.x, to.shadow.offset.x, t),
@@ -500,7 +498,7 @@ namespace Core::App::Render::UI::Components {
         shape_.SetCornerPointCount(std::max(2u, s.radiusQuality));
         shape_.SetRadius(ToShapeRadius(s.radius));
         shape_.SetSize(config_.size);
-        shape_.setOrigin(config_.size.x * 0.5f, config_.size.y * 0.5f);
+        shape_.setOrigin({ config_.size.x * 0.5f, config_.size.y * 0.5f });
         shape_.setPosition(config_.position);
     }
 
@@ -518,7 +516,7 @@ namespace Core::App::Render::UI::Components {
         shadowShape_.SetCornerPointCount(std::max(2u, s.radiusQuality));
         shadowShape_.SetRadius(ToShapeRadius(s.radius));
         shadowShape_.SetSize({ config_.size.x + expand * 2.f, config_.size.y + expand * 2.f });
-        shadowShape_.setOrigin((config_.size.x + expand * 2.f) * 0.5f, (config_.size.y + expand * 2.f) * 0.5f);
+        shadowShape_.setOrigin({ (config_.size.x + expand * 2.f) * 0.5f, (config_.size.y + expand * 2.f) * 0.5f });
 
         shadowShape_.setPosition(config_.position + s.shadow.offset);
         shadowShape_.setFillColor(s.shadow.color);
@@ -530,11 +528,9 @@ namespace Core::App::Render::UI::Components {
     {
         float scale = 1.f;
 
-        // hover scale (subtle)
         if (config_.anim.enableHoverScale && hovered_ && config_.enabled)
             scale *= config_.anim.hoverScale;
 
-        // pulse scale
         if (config_.anim.enablePulseScale)
         {
             constexpr float PI = 3.1415926535f;
@@ -543,7 +539,6 @@ namespace Core::App::Render::UI::Components {
             scale *= (1.f + config_.anim.pulseAmplitude * s);
         }
 
-        // fade-in (alpha)
         float alphaFactor = 1.f;
         if (config_.anim.enableFadeIn)
         {
@@ -552,17 +547,15 @@ namespace Core::App::Render::UI::Components {
             alphaFactor *= tt;
         }
 
-        // apply scale
-        shape_.setScale(scale, scale);
-        shadowShape_.setScale(scale, scale);
+        shape_.setScale({ scale, scale });
+        shadowShape_.setScale({ scale, scale });
 
-        // apply alpha on top of current fill colors
         auto c = shape_.getFillColor();
-        c.a = static_cast<sf::Uint8>(static_cast<float>(c.a) * std::clamp(alphaFactor, 0.f, 1.f));
+        c.a = static_cast<uint8_t>(static_cast<float>(c.a) * std::clamp(alphaFactor, 0.f, 1.f));
         shape_.setFillColor(c);
 
         auto sc = shadowShape_.getFillColor();
-        sc.a = static_cast<sf::Uint8>(static_cast<float>(sc.a) * std::clamp(alphaFactor, 0.f, 1.f));
+        sc.a = static_cast<uint8_t>(static_cast<float>(sc.a) * std::clamp(alphaFactor, 0.f, 1.f));
         shadowShape_.setFillColor(sc);
     }
 

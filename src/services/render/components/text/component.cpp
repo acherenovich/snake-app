@@ -4,19 +4,18 @@ namespace Core::App::Render::UI::Components {
 
     Text::Text(const Config& cfg)
         : config_(cfg)
+        , text_(font_) // ✅ SFML3: text needs font ref
     {
+        font_.openFromFile(config_.font);
 
-        font_.loadFromFile(config_.font);
-
-        text_.setFont(font_);
         text_.setString(config_.text);
-
         text_.setCharacterSize(config_.characterSize);
         text_.setFillColor(config_.color);
 
         ApplyAlignment();
 
         drawables_.push_back(&text_);
+
         clock_.restart();
         elapsed_ = 0.f;
     }
@@ -27,7 +26,7 @@ namespace Core::App::Render::UI::Components {
         elapsed_ += dt;
 
         ApplyEffects();
-        ApplyAlignment(); // на случай изменения масштаба/строки
+        ApplyAlignment();
     }
 
     std::vector<sf::Drawable*> Text::Drawables()
@@ -69,35 +68,35 @@ namespace Core::App::Render::UI::Components {
 
     void Text::ApplyAlignment()
     {
-        sf::FloatRect bounds = text_.getLocalBounds();
+        const sf::FloatRect bounds = text_.getLocalBounds();
 
         sf::Vector2f origin { 0.f, 0.f };
 
-        // Горизонталь
+        // Horizontal
         switch (config_.hAlign)
         {
             case HAlign::Left:
-                origin.x = bounds.left;
+                origin.x = bounds.position.x;
                 break;
             case HAlign::Center:
-                origin.x = bounds.left + bounds.width / 2.f;
+                origin.x = bounds.position.x + bounds.size.x * 0.5f;
                 break;
             case HAlign::Right:
-                origin.x = bounds.left + bounds.width;
+                origin.x = bounds.position.x + bounds.size.x;
                 break;
         }
 
-        // Вертикаль
+        // Vertical
         switch (config_.vAlign)
         {
             case VAlign::Top:
-                origin.y = bounds.top;
+                origin.y = bounds.position.y;
                 break;
             case VAlign::Center:
-                origin.y = bounds.top + bounds.height / 2.f;
+                origin.y = bounds.position.y + bounds.size.y * 0.5f;
                 break;
             case VAlign::Bottom:
-                origin.y = bounds.top + bounds.height;
+                origin.y = bounds.position.y + bounds.size.y;
                 break;
         }
 
@@ -107,7 +106,6 @@ namespace Core::App::Render::UI::Components {
 
     void Text::ApplyEffects()
     {
-        // Базовый цвет + альфа
         sf::Color color = config_.color;
 
         float alphaFactor = 1.f;
@@ -120,7 +118,7 @@ namespace Core::App::Render::UI::Components {
             alphaFactor *= t;
         }
 
-        // Пульсация масштаба
+        // Pulse scale
         if (config_.enablePulseScale)
         {
             constexpr float PI = 3.1415926535f;
@@ -128,26 +126,27 @@ namespace Core::App::Render::UI::Components {
             scaleFactor *= 1.f + config_.pulseScaleAmplitude * s;
         }
 
-        // Пульсация альфы
+        // Pulse alpha
         if (config_.enablePulseAlpha)
         {
             constexpr float PI = 3.1415926535f;
-            const float s = std::sin(2.f * PI * config_.pulseAlphaSpeed * elapsed_); // [-1;1]
-            const float norm = 0.5f * (s + 1.f); // [0;1]
-            const float k = config_.pulseAlphaMin
-                            + (1.f - config_.pulseAlphaMin) * norm; // [min;1]
+            const float s = std::sin(2.f * PI * config_.pulseAlphaSpeed * elapsed_);
+            const float norm = 0.5f * (s + 1.f);
+            const float k = config_.pulseAlphaMin + (1.f - config_.pulseAlphaMin) * norm;
             alphaFactor *= k;
         }
 
         alphaFactor = std::clamp(alphaFactor, 0.f, 1.f);
-        const auto newAlpha = static_cast<sf::Uint8>(
+
+        const auto newAlpha = static_cast<std::uint8_t>(
             static_cast<float>(color.a) * alphaFactor
         );
 
         color.a = newAlpha;
         text_.setFillColor(color);
 
-        text_.setScale(scaleFactor, scaleFactor);
+        // ✅ SFML3: setScale only vector
+        text_.setScale({ scaleFactor, scaleFactor });
     }
 
 } // namespace Core::App::Render::UI::Components

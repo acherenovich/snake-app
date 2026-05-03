@@ -63,17 +63,17 @@ Render::Render(Initializer init)
     std::filesystem::path glowShaderPath = exeDir / "resources" / "glow.frag";
     std::filesystem::path snakeShaderPath = exeDir / "resources" / "snake.frag";
 
-    if (!font.loadFromFile(fontPath.string()))
+    if (!font.openFromFile(fontPath.string()))
     {
         throw std::runtime_error("Failed to load font from " + fontPath.string());
     }
 
-    if (!glowShader.loadFromFile(glowShaderPath.string(), sf::Shader::Fragment))
+    if (!glowShader.openFromFile(glowShaderPath.string(), sf::Shader::Fragment))
     {
         throw std::runtime_error("Failed to load glow shader from " + glowShaderPath.string());
     }
 
-    if (!snakeShader.loadFromFile(snakeShaderPath.string(), sf::Shader::Fragment))
+    if (!snakeShader.openFromFile(snakeShaderPath.string(), sf::Shader::Fragment))
     {
         throw std::runtime_error("Failed to load snake shader from " + snakeShaderPath.string());
     }
@@ -82,7 +82,7 @@ Render::Render(Initializer init)
     {
         throw std::runtime_error("Failed to create white texture");
     }
-    sf::Uint8 pixel[] = {255, 255, 255, 255};
+    uint8_t pixel[] = {255, 255, 255, 255};
     whiteTexture.update(pixel);
 
     window.setVerticalSyncEnabled(true);
@@ -541,7 +541,7 @@ void Render::UpdateScene()
                     }
                     break;
                 case sf::Event::MouseButtonPressed:
-                    if (game->State() == GameMenu && event.mouseButton.button == sf::Mouse::Left)
+                    if (game->State() == GameMenu && event.mouseButton.button == sf::Mouse::Button::Left)
                     {
                         sf::Vector2f mousePos = window.mapPixelToCoords(sf::Vector2i(event.mouseButton.x, event.mouseButton.y));
 

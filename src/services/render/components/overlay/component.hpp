@@ -40,14 +40,14 @@ namespace Core::App::Render::UI::Components {
             bool enableSoftLayers { false };
             int softLayersCount { 4 };
             float softLayersStep { 2.f };          // расширение прямоугольника на слой
-            sf::Uint8 softLayersAlphaStep { 18 };  // прибавка альфы
+            uint8_t softLayersAlphaStep { 18 };  // прибавка альфы
 
             // блокировать действия на фоне
             bool blockInput { true };
 
             // если хочешь закрывать модалку кликом по фону
             bool closeOnClick { false };
-            sf::Mouse::Button closeButton { sf::Mouse::Left };
+            sf::Mouse::Button closeButton { sf::Mouse::Button::Left };
 
             // если хочешь анимировать появление
             bool enableFadeIn { false };

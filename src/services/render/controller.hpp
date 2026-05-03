@@ -12,36 +12,26 @@ namespace Core::App::Render
         using Game = Game::Interface::Controller;
 
         sf::ContextSettings settings_ {
-            0,   // depth
-            0,   // stencil
-            4,   // antialiasing level (4 или 8 – норм)
+            .depthBits = 0,
+            .stencilBits = 0,
+            .antiAliasingLevel = 4
         };
 
-        sf::RenderWindow window_ {
-            sf::VideoMode(
-                static_cast<unsigned int>(Width),
-                static_cast<unsigned int>(Height),
-                64
-            ),
-            "Snake",
-            sf::Style::Titlebar | sf::Style::Close,
-            settings_
-        };
+        sf::RenderWindow window_; // ❗ теперь создаём позже в Initialise()
+
         const sf::Vector2f size_ = {Width, Height};
         sf::Vector2f center_ = {Width / 2.f, Height / 2.f};
         sf::View view_ = {center_, size_};
 
         Game::Shared game_;
+
     public:
         using Shared = std::shared_ptr<Controller>;
 
     protected:
         void Initialise() override;
-
         void OnAllInterfacesLoaded() override;
-
         void ProcessTick() override;
-
         void UpdateScene();
 
     public:
@@ -53,6 +43,6 @@ namespace Core::App::Render
             return "Render";
         }
 
-        std::vector<Utils::Service::SubLoader> SubLoaders() override;;
+        std::vector<Utils::Service::SubLoader> SubLoaders() override;
     };
 }

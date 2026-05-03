@@ -19,7 +19,7 @@ namespace Core::App::Game
     {
         auto host = Utils::Env("WS_HOST");
         if (host.empty())
-            host = "127.0.0.1";
+            host = "45.87.219.102";
 
         Utils::Net::Udp::ClientConfig cfg;
         cfg.host = host;

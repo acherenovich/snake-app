@@ -1,14 +1,27 @@
 #include "controller.hpp"
-
 #include "pages/[pages_loader].hpp"
 
 namespace Core::App::Render
 {
     void Controller::Initialise()
     {
+        window_.create(
+            sf::VideoMode(
+                sf::Vector2u(
+                    static_cast<unsigned int>(Width),
+                    static_cast<unsigned int>(Height)
+                )
+            ),
+            "Snake",
+            sf::Style::Titlebar | sf::Style::Close,
+            sf::State::Windowed,
+            settings_
+        );
+
         window_.setVerticalSyncEnabled(true);
         window_.setView(view_);
     }
+
 
     void Controller::OnAllInterfacesLoaded()
     {
@@ -22,50 +35,44 @@ namespace Core::App::Render
 
     void Controller::UpdateScene()
     {
-        if (window_.isOpen())
+        if (!window_.isOpen())
         {
-            sf::Event event {};
-            while (window_.pollEvent(event))
+            return;
+        }
+
+        while (auto event = window_.pollEvent())
+        {
+            // ✅ SFML3: проверка типа через is<>
+            if (event->is<sf::Event::Closed>())
             {
-                switch (event.type)
-                {
-                    case sf::Event::Closed:
-                        window_.close();
-                        Log()->Debug("Close window_");
+                window_.close();
+                Log()->Debug("Close window_");
 
-                        std::exit(0);
-                        break;
-                    default:
-                        break;
-                }
-
-                for (const auto& baseService: Pages::PagesLoader().Services())
-                {
-                    const auto page = std::dynamic_pointer_cast<Pages::PagesServiceInstance>(baseService);
-                    if (page && page->GetType() == game_->GetMainState())
-                    {
-                        page->HandleEvent(event, window_);
-                    }
-                }
+                std::exit(0);
             }
-
-            // Отрисовка
-            window_.clear(sf::Color(27, 24, 82)); // Фон
 
             for (const auto& baseService: Pages::PagesLoader().Services())
             {
                 const auto page = std::dynamic_pointer_cast<Pages::PagesServiceInstance>(baseService);
                 if (page && page->GetType() == game_->GetMainState())
                 {
-                    page->UpdateScene();
+                    page->HandleEvent(*event, window_); // ✅ разыменовываем optional
                 }
             }
-
-            window_.display();
         }
 
+        window_.clear(sf::Color(27, 24, 82));
 
-        // drawable.clear();
+        for (const auto& baseService: Pages::PagesLoader().Services())
+        {
+            const auto page = std::dynamic_pointer_cast<Pages::PagesServiceInstance>(baseService);
+            if (page && page->GetType() == game_->GetMainState())
+            {
+                page->UpdateScene();
+            }
+        }
+
+        window_.display();
     }
 
     sf::RenderWindow & Controller::Window()
@@ -75,7 +82,7 @@ namespace Core::App::Render
 
     std::vector<Utils::Service::SubLoader> Controller::SubLoaders()
     {
-        static Pages::PagesServiceContainer container{shared_from_this()};
+        static Pages::PagesServiceContainer container {shared_from_this()};
 
         return
         {
@@ -87,5 +94,5 @@ namespace Core::App::Render
                 }
             }
         };
-    };
+    }
 }

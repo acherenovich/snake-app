@@ -7,15 +7,12 @@ namespace Core::App::Render::UI::Components {
     {
         rect_.setSize(config_.size);
         rect_.setPosition(config_.position);
-        rect_.setOrigin(config_.size.x / 2.f, config_.size.y / 2.f);
-
-        // как ты просил: шрифт грузим "текстом" внутри компонента (потом оптимизируешь)
-        font_.loadFromFile(config_.font);
-        label_.setFont(font_);
-        label_.setString(config_.text);
+        rect_.setOrigin({ config_.size.x / 2.f, config_.size.y / 2.f });
 
         drawables_.push_back(&rect_);
-        drawables_.push_back(&label_);
+
+        EnsureFontLoaded();
+        EnsureLabelCreated();
 
         ApplyCurrentStyle();
     }
@@ -24,12 +21,47 @@ namespace Core::App::Render::UI::Components {
 
     std::vector<sf::Drawable*> Button::Drawables()
     {
+        // label_ может быть не создан, если шрифт не загрузился
+        if (label_)
+        {
+            // гарантируем что label в drawables
+            if (std::find(drawables_.begin(), drawables_.end(), &(*label_)) == drawables_.end())
+                drawables_.push_back(&(*label_));
+        }
+
         return drawables_;
     }
 
     sf::FloatRect Button::Bounds() const
     {
         return rect_.getGlobalBounds();
+    }
+
+    bool Button::EnsureFontLoaded()
+    {
+        // Если шрифт уже загружен — ничего не делаем
+        if (font_.getInfo().family != "")
+            return true;
+
+        if (!font_.openFromFile(config_.font))
+        {
+            // Лог можешь сам воткнуть если надо
+            return false;
+        }
+
+        return true;
+    }
+
+    void Button::EnsureLabelCreated()
+    {
+        if (!EnsureFontLoaded())
+            return;
+
+        if (!label_)
+        {
+            label_.emplace(font_);
+            label_->setString(config_.text);
+        }
     }
 
     void Button::SetEnabled(bool value)
@@ -46,7 +78,11 @@ namespace Core::App::Render::UI::Components {
     void Button::SetText(const std::string& value)
     {
         config_.text = value;
-        label_.setString(config_.text);
+
+        EnsureLabelCreated();
+        if (label_)
+            label_->setString(config_.text);
+
         ApplyCurrentStyle();
     }
 
@@ -61,7 +97,7 @@ namespace Core::App::Render::UI::Components {
     {
         config_.size = size;
         rect_.setSize(config_.size);
-        rect_.setOrigin(config_.size.x / 2.f, config_.size.y / 2.f);
+        rect_.setOrigin({ config_.size.x / 2.f, config_.size.y / 2.f });
         ApplyCurrentStyle();
     }
 
@@ -104,7 +140,6 @@ namespace Core::App::Render::UI::Components {
             return;
         }
 
-        // Hover — из положения мыши (визуал), события клика — только из HandleEvent
         const bool nowHovered = HitTestMouse(window);
         SetHovered(nowHovered);
 
@@ -116,19 +151,22 @@ namespace Core::App::Render::UI::Components {
         if (!config_.enabled)
             return;
 
-        // hover update from events too (чтобы не ждать Update)
-        if (e.type == sf::Event::MouseMoved)
+        // MouseMoved
+        if (const auto* mm = e.getIf<sf::Event::MouseMoved>())
         {
-            const bool nowHovered = HitTest(window, e.mouseMove.x, e.mouseMove.y);
+            const bool nowHovered = HitTest(window, mm->position.x, mm->position.y);
             SetHovered(nowHovered);
             ApplyCurrentStyle();
             return;
         }
 
-        // press
-        if (e.type == sf::Event::MouseButtonPressed && e.mouseButton.button == config_.mouseButton)
+        // Press
+        if (const auto* mb = e.getIf<sf::Event::MouseButtonPressed>())
         {
-            const bool inside = HitTest(window, e.mouseButton.x, e.mouseButton.y);
+            if (mb->button != config_.mouseButton)
+                return;
+
+            const bool inside = HitTest(window, mb->position.x, mb->position.y);
 
             if (inside)
             {
@@ -138,7 +176,6 @@ namespace Core::App::Render::UI::Components {
             }
             else
             {
-                // клик вне — сбрасываем
                 pressed_ = false;
                 pressedInside_ = false;
             }
@@ -147,10 +184,13 @@ namespace Core::App::Render::UI::Components {
             return;
         }
 
-        // release + click
-        if (e.type == sf::Event::MouseButtonReleased && e.mouseButton.button == config_.mouseButton)
+        // Release + Click
+        if (const auto* mr = e.getIf<sf::Event::MouseButtonReleased>())
         {
-            const bool inside = HitTest(window, e.mouseButton.x, e.mouseButton.y);
+            if (mr->button != config_.mouseButton)
+                return;
+
+            const bool inside = HitTest(window, mr->position.x, mr->position.y);
 
             if (pressed_)
             {
@@ -163,7 +203,6 @@ namespace Core::App::Render::UI::Components {
 
             pressedInside_ = false;
 
-            // обновим hover по факту release позиции
             SetHovered(inside);
             ApplyCurrentStyle();
             return;
@@ -203,7 +242,6 @@ namespace Core::App::Render::UI::Components {
             return;
         }
 
-        // selected overrides hover/normal, но не overrides pressed (кнопку можно жать даже если selected)
         if (pressed_)
         {
             ApplyStyle(config_.pressed);
@@ -231,41 +269,44 @@ namespace Core::App::Render::UI::Components {
         rect_.setOutlineThickness(style.borderThickness);
         rect_.setOutlineColor(style.borderColor);
 
-        // как ты просил: шрифт — текстом, внутри компонента
-        font_.loadFromFile(config_.font);
-        label_.setFont(font_);
+        EnsureLabelCreated();
+        if (!label_)
+            return;
 
-        label_.setCharacterSize(style.text.size);
-        label_.setFillColor(style.text.color);
-        label_.setStyle(style.text.sfmlStyle);
+        label_->setCharacterSize(style.text.size);
+        label_->setFillColor(style.text.color);
+        label_->setStyle(style.text.sfmlStyle);
 
         ApplyLabelAlignment(style.text);
     }
 
     void Button::ApplyLabelAlignment(const TextStyle& ts)
     {
-        const auto b = label_.getLocalBounds();
+        if (!label_)
+            return;
+
+        const auto b = label_->getLocalBounds();
 
         sf::Vector2f origin { 0.f, 0.f };
 
         switch (ts.hAlign)
         {
-            case HAlign::Left:   origin.x = b.left; break;
-            case HAlign::Center: origin.x = b.left + b.width / 2.f; break;
-            case HAlign::Right:  origin.x = b.left + b.width; break;
+            case HAlign::Left:   origin.x = b.position.x; break;
+            case HAlign::Center: origin.x = b.position.x + b.size.x / 2.f; break;
+            case HAlign::Right:  origin.x = b.position.x + b.size.x; break;
         }
 
         switch (ts.vAlign)
         {
-            case VAlign::Top:    origin.y = b.top; break;
-            case VAlign::Center: origin.y = b.top + b.height / 2.f; break;
-            case VAlign::Bottom: origin.y = b.top + b.height; break;
+            case VAlign::Top:    origin.y = b.position.y; break;
+            case VAlign::Center: origin.y = b.position.y + b.size.y / 2.f; break;
+            case VAlign::Bottom: origin.y = b.position.y + b.size.y; break;
         }
 
-        label_.setOrigin(origin);
+        label_->setOrigin(origin);
 
         const auto center = rect_.getPosition();
-        label_.setPosition(center + ts.offset);
+        label_->setPosition(center + ts.offset);
     }
 
 } // namespace Core::App::Render::UI::Components

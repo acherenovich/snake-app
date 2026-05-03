@@ -46,31 +46,34 @@ namespace Core::App::Render::UI::Components {
         if (!config_.enabled)
             return;
 
-        // если overlay не блокирует инпут — не трогаем события
         if (!config_.blockInput && !config_.closeOnClick)
             return;
 
         // close on click (по затемнению)
-        if (config_.closeOnClick &&
-            e.type == sf::Event::MouseButtonPressed &&
-            e.mouseButton.button == config_.closeButton)
+        if (config_.closeOnClick)
         {
-            if (ContainsPoint(window, e.mouseButton.x, e.mouseButton.y))
+            if (const auto* mb = e.getIf<sf::Event::MouseButtonPressed>())
             {
-                events_.CallEvent(Event::Click);
-                events_.CallEvent(Event::Consumed);
-                if (config_.blockInput)
-                    return;
+                if (mb->button == config_.closeButton)
+                {
+                    if (ContainsPoint(window, mb->position.x, mb->position.y))
+                    {
+                        events_.CallEvent(Event::Click);
+                        events_.CallEvent(Event::Consumed);
+                        if (config_.blockInput)
+                            return;
+                    }
+                }
             }
         }
 
-        // блокируем все фоновые события (съедаем)
+        // блокируем все фоновые события
         if (config_.blockInput)
         {
-            // Если хочешь — можно оставить Escape наружу, но пока “жёстко блокируем”
             events_.CallEvent(Event::Consumed);
         }
     }
+
 
     void Overlay::SetEnabled(const bool enabled)
     {
@@ -127,7 +130,7 @@ namespace Core::App::Render::UI::Components {
 
             sf::Color c = config_.color;
             const int a = static_cast<int>(c.a) + static_cast<int>(config_.softLayersAlphaStep) * (i + 1);
-            c.a = static_cast<sf::Uint8>(std::clamp(a, 0, 255));
+            c.a = static_cast<uint8_t>(std::clamp(a, 0, 255));
             r.setFillColor(c);
 
             softLayers_.push_back(r);
@@ -143,7 +146,7 @@ namespace Core::App::Render::UI::Components {
 
         // умножаем альфу на t
         auto apply = [t](sf::Color c) -> sf::Color {
-            const auto a = static_cast<sf::Uint8>(static_cast<float>(c.a) * t);
+            const auto a = static_cast<uint8_t>(static_cast<float>(c.a) * t);
             c.a = a;
             return c;
         };
@@ -157,7 +160,7 @@ namespace Core::App::Render::UI::Components {
             {
                 // берём текущий цвет слоя и домножаем его альфу ещё раз
                 auto c = softLayers_[i].getFillColor();
-                c.a = static_cast<sf::Uint8>(static_cast<float>(c.a) * t);
+                c.a = static_cast<uint8_t>(static_cast<float>(c.a) * t);
                 softLayers_[i].setFillColor(c);
             }
         }

@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cctype>
 #include <limits>
+#include <cstdint>
 
 namespace Core::App::Render::UI::Components {
 
@@ -35,12 +36,12 @@ namespace Core::App::Render::UI::Components {
         {
             sf::Color color { sf::Color::White };
             unsigned int size { 22 };
-            sf::Uint32 sfmlStyle { sf::Text::Regular };
+            std::uint32_t sfmlStyle { sf::Text::Style::Regular };
 
             bool pulseAlpha { false };
             float pulseSpeed { 2.0f };
-            sf::Uint8 pulseMin { 160 };
-            sf::Uint8 pulseMax { 255 };
+            std::uint8_t pulseMin { 160 };
+            std::uint8_t pulseMax { 255 };
         };
 
         struct BoxStyle
@@ -106,7 +107,7 @@ namespace Core::App::Render::UI::Components {
             BoxStyle disabledBox { .background = sf::Color(30, 30, 30, 140), .borderColor = sf::Color(255,255,255,20), .borderThickness = 2.f };
 
             TextStyle textStyle {};
-            TextStyle placeholderStyle { .color = sf::Color(255,255,255,120), .size = 22, .sfmlStyle = sf::Text::Regular, .pulseAlpha = false };
+            TextStyle placeholderStyle { .color = sf::Color(255,255,255,120), .size = 22, .sfmlStyle = sf::Text::Style::Regular, .pulseAlpha = false };
 
             SelectionStyle selectionStyle {};
             CaretStyle caretStyle {};
@@ -214,6 +215,7 @@ namespace Core::App::Render::UI::Components {
         sf::RectangleShape selectionRect_;
 
         sf::Font font_;
+        bool fontLoaded_ { false };
 
         // caret blink
         sf::Clock caretClock_;
