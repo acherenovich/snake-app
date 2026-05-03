@@ -10,51 +10,71 @@
 
 #include <SFML/Graphics.hpp>
 #include <array>
+#include <vector>
+#include <chrono>
 
 namespace Core::App::Render::Pages {
 
     class MainMenu final : public PagesServiceInstance
     {
-        using Client = Network::Websocket::Interface::Client;
+        using Client         = Network::Websocket::Interface::Client;
         using GameController = Game::Interface::Controller;
+        using Session        = Game::Interface::Controller::Stats::Session;
 
-        const sf::Vector2f center_ { Width / 2.f, Height / 2.f };
+        static constexpr int kRowsPerPage = 3;
+
+        const sf::Vector2f center_         { Width / 2.f, Height / 2.f };
+        const sf::Vector2f containerSize   { 980.f, 600.f };
+        const sf::Vector2f containerCenter { center_.x, center_.y + 40.f };
+
+        const sf::Vector2f cLT { containerCenter.x - containerSize.x * 0.5f,
+                                 containerCenter.y - containerSize.y * 0.5f };
+        const sf::Vector2f cRT { containerCenter.x + containerSize.x * 0.5f,
+                                 containerCenter.y - containerSize.y * 0.5f };
 
         struct LobbyUI
         {
-            UI::Components::Block::Shared row;
-            UI::Components::Text::Shared title;
-            UI::Components::Text::Shared players;
+            UI::Components::Block::Shared  row;
+            UI::Components::Text::Shared   title;
+            UI::Components::Text::Shared   players;
             UI::Components::Button::Shared play;
+            bool visible { false };
         };
 
         struct UIState
         {
-            UI::Components::Text::Shared title;
+            UI::Components::Text::Shared  title;
 
-            // Main centered container
-            UI::Components::Block::Shared container;
+            UI::Components::Block::Shared  container;
 
-            // Left
             UI::Components::Button::Shared playBig;
 
-            // Right (Account)
-            UI::Components::Block::Shared accountPanel;
-            UI::Components::Text::Shared accountTitle;
-            UI::Components::Text::Shared accountLogin;
-            UI::Components::Text::Shared accountMaxExp;
+            UI::Components::Block::Shared  accountPanel;
+            UI::Components::Text::Shared   accountTitle;
+            UI::Components::Text::Shared   accountLogin;
+            UI::Components::Text::Shared   accountMaxExp;
             UI::Components::Button::Shared profileSettings;
             UI::Components::Button::Shared logout;
 
-            // Bottom (Lobbies)
-            UI::Components::Text::Shared lobbiesTitle;
-            std::array<LobbyUI, 3> lobbies;
+            UI::Components::Text::Shared   lobbiesTitle;
+            std::array<LobbyUI, kRowsPerPage> lobbyRows;
+            UI::Components::Text::Shared   noLobbies;
+
+            // Pagination
+            UI::Components::Button::Shared pagePrev;
+            UI::Components::Text::Shared   pageInfo;
+            UI::Components::Button::Shared pageNext;
         } ui;
 
-        Client::Shared client_;
+        Client::Shared        client_;
         GameController::Shared gameController_;
 
-        std::chrono::steady_clock::time_point lastUpdate_ = std::chrono::steady_clock::time_point(std::chrono::steady_clock::duration::zero());
+        std::vector<Session> sessions_;
+        int currentPage_ { 0 };
+
+        std::chrono::steady_clock::time_point lastUpdate_ =
+            std::chrono::steady_clock::time_point(std::chrono::steady_clock::duration::zero());
+
     public:
         void Initialise() override;
         void OnAllInterfacesLoaded() override;
@@ -73,10 +93,10 @@ namespace Core::App::Render::Pages {
         void BuildLayout();
 
         void LoadStats();
+        void RebuildPage();
 
         void OnPlayClick();
         void OnPlaySessionClick(uint32_t id);
-
         void OnLogoutClick();
     };
 

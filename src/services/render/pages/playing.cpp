@@ -539,8 +539,14 @@ namespace Core::App::Render::Pages {
         }
         const sf::Vector2f n { -dir.y, dir.x };
 
-        const sf::Color bodyBase = sf::Color(40, 70, 120, 255);
-        const sf::Color headBase = sf::Color(55, 110, 105, 255);
+        const auto snakeColor = snake->GetColor();
+        const sf::Color bodyBase = sf::Color(snakeColor.r, snakeColor.g, snakeColor.b, 255);
+        const sf::Color headBase = sf::Color(
+            static_cast<uint8_t>(std::min(255, static_cast<int>(snakeColor.r) + 50)),
+            static_cast<uint8_t>(std::min(255, static_cast<int>(snakeColor.g) + 50)),
+            static_cast<uint8_t>(std::min(255, static_cast<int>(snakeColor.b) + 50)),
+            255
+        );
 
         const float time0 = clock.getElapsedTime().asSeconds();
 

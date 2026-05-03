@@ -4,6 +4,8 @@
 #include <service_loader.hpp>
 #include <interface_controller.hpp>
 
+#include <atomic>
+
 namespace Core {
     using Loader = Utils::Service::Loader;
     using InterfaceController = Utils::Service::InterfaceController;
@@ -18,6 +20,14 @@ namespace Core {
     {
         static InterfaceController interfaceController;
         return interfaceController;
+    }
+
+    // Флаг жизни главного цикла. Атомарный bool тривиально деструктируется —
+    // нет проблем с порядком уничтожения статиков.
+    inline std::atomic<bool> & AppRunning()
+    {
+        static std::atomic<bool> running { true };
+        return running;
     }
 
     using BaseServiceInterface = Utils::Service::BaseServiceInterface;

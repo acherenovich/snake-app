@@ -15,16 +15,12 @@ namespace Core::App::Game
     {
     }
 
-    void GameClient::Initialise(const std::uint8_t serverID)
+    void GameClient::Initialise(const std::string& host, const std::uint16_t port)
     {
-        auto host = Utils::Env("WS_HOST");
-        if (host.empty())
-            host = "45.87.219.102";
-
         Utils::Net::Udp::ClientConfig cfg;
-        cfg.host = host;
-        cfg.port = 7777 + serverID;
-        cfg.mode = Utils::Net::Udp::Mode::Bytes;
+        cfg.host      = host;
+        cfg.port      = port;
+        cfg.mode      = Utils::Net::Udp::Mode::Bytes;
         cfg.ioThreads = 2;
 
         udpClient_ = UdpClient::Create(cfg, shared_from_this());
@@ -483,11 +479,13 @@ namespace Core::App::Game
     }
 
 
-    GameClient::Shared GameClient::Create(const BaseServiceContainer * parent, const std::uint8_t serverID)
+    GameClient::Shared GameClient::Create(const BaseServiceContainer* parent,
+                                          const std::string& host,
+                                          const std::uint16_t port)
     {
         const auto obj = std::make_shared<GameClient>();
         obj->SetupContainer(parent);
-        obj->Initialise(serverID);
+        obj->Initialise(host, port);
         return obj;
     }
 
@@ -616,6 +614,7 @@ namespace Core::App::Game
         {
             snake = std::make_shared<EntitySnake>(0, sf::Vector2f(ss.headX, ss.headY));
             snake->SetEntityID(entityID);
+            snake->SetColor({ ss.color.r, ss.color.g, ss.color.b, ss.color.a });
 
             snakesByID_[entityID] = snake;
             snakes_.insert(snake);

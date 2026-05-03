@@ -28,6 +28,9 @@ namespace Core::App::Game
 
         uint32_t serverID_ = 0;
 
+        // Кэш последних stats для разрешения host/port при JoinSession
+        Stats lastStats_;
+
     public:
         using Shared = std::shared_ptr<Controller>;
 

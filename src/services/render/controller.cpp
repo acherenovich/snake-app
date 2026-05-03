@@ -1,11 +1,15 @@
 #include "controller.hpp"
 #include "pages/[pages_loader].hpp"
 
+#include "[core_loader].hpp"
+
 namespace Core::App::Render
 {
     void Controller::Initialise()
     {
-        window_.create(
+        window_ = std::make_unique<sf::RenderWindow>();
+
+        window_->create(
             sf::VideoMode(
                 sf::Vector2u(
                     static_cast<unsigned int>(Width),
@@ -18,8 +22,8 @@ namespace Core::App::Render
             settings_
         );
 
-        window_.setVerticalSyncEnabled(true);
-        window_.setView(view_);
+        window_->setVerticalSyncEnabled(true);
+        window_->setView(view_);
     }
 
 
@@ -35,20 +39,22 @@ namespace Core::App::Render
 
     void Controller::UpdateScene()
     {
-        if (!window_.isOpen())
-        {
+        if (!window_ || !window_->isOpen())
             return;
-        }
 
-        while (auto event = window_.pollEvent())
+        while (auto event = window_->pollEvent())
         {
-            // ✅ SFML3: проверка типа через is<>
             if (event->is<sf::Event::Closed>())
             {
-                window_.close();
                 Log()->Debug("Close window_");
 
-                std::exit(0);
+                // Явно уничтожаем окно ЗДЕСЬ, пока SFML GL SharedContext жив.
+                // Если дождаться деструктора Controller-а, SharedContext
+                // (статик SFML) уже будет мёртв → abort в SFContext::~SFContext().
+                window_.reset();
+
+                Core::AppRunning().store(false);
+                return;
             }
 
             for (const auto& baseService: Pages::PagesLoader().Services())
@@ -56,12 +62,12 @@ namespace Core::App::Render
                 const auto page = std::dynamic_pointer_cast<Pages::PagesServiceInstance>(baseService);
                 if (page && page->GetType() == game_->GetMainState())
                 {
-                    page->HandleEvent(*event, window_); // ✅ разыменовываем optional
+                    page->HandleEvent(*event, *window_);
                 }
             }
         }
 
-        window_.clear(sf::Color(27, 24, 82));
+        window_->clear(sf::Color(27, 24, 82));
 
         for (const auto& baseService: Pages::PagesLoader().Services())
         {
@@ -72,12 +78,12 @@ namespace Core::App::Render
             }
         }
 
-        window_.display();
+        window_->display();
     }
 
     sf::RenderWindow & Controller::Window()
     {
-        return window_;
+        return *window_;
     }
 
     std::vector<Utils::Service::SubLoader> Controller::SubLoaders()

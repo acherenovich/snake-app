@@ -85,7 +85,7 @@ namespace Core::App::Game
 
         GameClient();
 
-        void Initialise(std::uint8_t serverID);
+        void Initialise(const std::string& host, std::uint16_t port);
 
         void ProcessTick() override;
 
@@ -117,7 +117,9 @@ namespace Core::App::Game
         [[nodiscard]] uint32_t GetServerFrame() const override;
 
 
-        static Shared Create(const BaseServiceContainer * parent, std::uint8_t serverID);
+        static Shared Create(const BaseServiceContainer* parent,
+                             const std::string& host,
+                             std::uint16_t port);
 
     private:
         void ClearWorld();

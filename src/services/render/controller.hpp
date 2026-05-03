@@ -4,6 +4,7 @@
 #include "interfaces/controller.hpp"
 
 #include <SFML/Graphics.hpp>
+#include <memory>
 
 namespace Core::App::Render
 {
@@ -17,7 +18,9 @@ namespace Core::App::Render
             .antiAliasingLevel = 4
         };
 
-        sf::RenderWindow window_; // ❗ теперь создаём позже в Initialise()
+        // unique_ptr позволяет явно уничтожить окно до того, как SFML
+        // успеет снести свой статический GL SharedContext.
+        std::unique_ptr<sf::RenderWindow> window_;
 
         const sf::Vector2f size_ = {Width, Height};
         sf::Vector2f center_ = {Width / 2.f, Height / 2.f};

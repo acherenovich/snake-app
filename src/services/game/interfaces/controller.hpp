@@ -37,8 +37,10 @@ namespace Core::App::Game
             {
                 struct Session
                 {
-                    uint32_t sessionID_ = 0;
-                    uint32_t players_ = 0;
+                    uint32_t    sessionID_ = 0;
+                    uint32_t    players_   = 0;
+                    std::string host_;
+                    uint16_t    port_      = 0;
                 };
 
                 std::vector<Session> sessions_;

@@ -59,7 +59,7 @@ namespace Core::App::Game
         mainState_ = state;
     }
 
-    Utils::Task<ActionResult<>> Controller::PerformLogin(std::string login, std::string password, bool save)
+    Utils::Task<ActionResult<>> Controller::PerformLogin(std::string login, std::string password, const bool save)
     {
         const boost::json::object request = {
             {"login", login},
@@ -70,7 +70,7 @@ namespace Core::App::Game
         if (!message)
             co_return {.error = "timeout"};
 
-        Network::Websocket::Response::PlayerSession response(message);
+        const Network::Websocket::Response::PlayerSession response(message);
         if (!response.Success())
         {
             co_return {.error = response.Error()};
@@ -122,7 +122,7 @@ namespace Core::App::Game
         if (!message)
             co_return {.error = "timeout"};
 
-        Network::Websocket::Response::PlayerSession response(message);
+        const Network::Websocket::Response::PlayerSession response(message);
         if (!response.Success())
         {
             co_return {.error = response.Error()};
@@ -162,9 +162,16 @@ namespace Core::App::Game
             {
                 auto sessionVal = sessionJson.as_object();
 
-                auto & [sessionID_, players_] = stats.sessions_.emplace_back();
-                sessionID_= sessionVal["id"].as_int64();
-                players_ = sessionVal["players"].as_int64();
+                Stats::Session session;
+                session.sessionID_ = static_cast<uint32_t>(sessionVal["id"].as_int64());
+                session.players_   = static_cast<uint32_t>(sessionVal["players"].as_int64());
+
+                if (sessionVal.contains("host") && sessionVal.at("host").is_string())
+                    session.host_ = std::string(sessionVal.at("host").as_string());
+                if (sessionVal.contains("port") && sessionVal.at("port").is_int64())
+                    session.port_ = static_cast<uint16_t>(sessionVal.at("port").as_int64());
+
+                stats.sessions_.push_back(session);
             }
         }
         catch (...)
@@ -172,6 +179,7 @@ namespace Core::App::Game
             co_return {.success = false};
         }
 
+        lastStats_ = stats;
         co_return {.success = true, .result = stats};
     }
 
@@ -217,7 +225,20 @@ namespace Core::App::Game
 
         SetMainState(MainState_JoiningSession);
 
-        gameClient_ = GameClient::Create(this, sessionID);
+        // Ищем host/port для этой сессии в кэше stats
+        std::string udpHost = "127.0.0.1";
+        uint16_t    udpPort = static_cast<uint16_t>(7777 + sessionID); // fallback
+        for (const auto& s : lastStats_.sessions_)
+        {
+            if (s.sessionID_ == sessionID && !s.host_.empty() && s.port_ != 0)
+            {
+                udpHost = s.host_;
+                udpPort = s.port_;
+                break;
+            }
+        }
+
+        gameClient_ = GameClient::Create(this, udpHost, udpPort);
         gameClient_->SetConnectCallback([this, sessionID](uint64_t ssid) {
             SessionJoined(sessionID, ssid) = [this](const ActionResult<> & result) {
                 if (mainState_ != MainState_JoiningSession)

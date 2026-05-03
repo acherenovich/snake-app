@@ -4,7 +4,7 @@
 
 #include <thread>
 
-[[noreturn]] int main()
+int main()
 {
     const auto log = Utils::Logging::Logger::Create("CORE");
     Utils::SetDefaultLogger(log);
@@ -20,11 +20,13 @@
 
     log->Msg("Core services initialised");
 
-    for (;;) {
+    while (Core::AppRunning().load()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         loader.ProcessTick();
         Utils::GetTaskManager().ClearFinishedTasks();
     }
+
+    return 0;
 }
 
 // #include <logging.hpp>
