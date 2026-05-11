@@ -48,9 +48,10 @@ namespace Core::App::Render
             {
                 Log()->Debug("Close window_");
 
-                // Явно уничтожаем окно ЗДЕСЬ, пока SFML GL SharedContext жив.
-                // Если дождаться деструктора Controller-а, SharedContext
-                // (статик SFML) уже будет мёртв → abort в SFContext::~SFContext().
+                // Страницы держат sf::Font/sf::Texture. Их нужно разрушить до окна,
+                // иначе на macOS SFML может снести GL context раньше текстур.
+                Pages::PagesLoader().DestroyServices();
+
                 window_.reset();
 
                 Core::AppRunning().store(false);
