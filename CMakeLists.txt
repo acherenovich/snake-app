@@ -144,7 +144,7 @@ target_link_libraries(snake-app
 
 if (WIN32)
     target_link_libraries(snake-app PRIVATE
-            "C:/msys64/mingw64/lib/libgraphite2.a"
+            "${MSYS_LIB}/libgraphite2.a"
     )
 
     target_link_libraries(snake-app PRIVATE
