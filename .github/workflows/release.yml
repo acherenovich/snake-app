@@ -1,0 +1,148 @@
+name: Build client release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  SFML_VERSION: 3.1.0
+
+jobs:
+  build-macos-arm64:
+    name: macOS arm64
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          brew install cmake ninja boost openssl@3 freetype
+
+      - name: Build static SFML
+        run: |
+          git clone --depth 1 --branch "$SFML_VERSION" https://github.com/SFML/SFML.git "$RUNNER_TEMP/SFML"
+          cmake -S "$RUNNER_TEMP/SFML" -B "$RUNNER_TEMP/SFML-build" \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/SFML-install" \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DSFML_BUILD_AUDIO=OFF \
+            -DSFML_BUILD_EXAMPLES=OFF \
+            -DSFML_BUILD_TEST_SUITE=OFF \
+            -DSFML_BUILD_DOC=OFF
+          cmake --build "$RUNNER_TEMP/SFML-build" --target install -j2
+
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/SFML-install;/opt/homebrew/opt/openssl@3;/opt/homebrew/opt/boost;/opt/homebrew/opt/freetype"
+
+      - name: Build
+        run: cmake --build build --target snake-app -j2
+
+      - name: Package
+        run: |
+          mkdir -p dist/snake-app-macos-arm64/snake-app
+          cp ./snake-app dist/snake-app-macos-arm64/snake-app/
+          cp -R assets dist/snake-app-macos-arm64/snake-app/
+          chmod +x dist/snake-app-macos-arm64/snake-app/snake-app
+          cd dist/snake-app-macos-arm64
+          zip -r ../snake-app-macos-arm64.zip snake-app
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: snake-app-macos-arm64
+          path: dist/snake-app-macos-arm64.zip
+
+      - name: Upload release asset
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "${{ github.ref_name }}" >/dev/null 2>&1 \
+            || gh release create "${{ github.ref_name }}" --title "${{ github.ref_name }}" --notes "Snake client release ${{ github.ref_name }}" \
+            || true
+          gh release upload "${{ github.ref_name }}" dist/snake-app-macos-arm64.zip --clobber
+
+  build-windows-x86_64:
+    name: Windows x86_64
+    runs-on: windows-2022
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            git
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-sfml
+            mingw-w64-x86_64-boost
+            mingw-w64-x86_64-openssl
+            mingw-w64-x86_64-freetype
+            mingw-w64-x86_64-harfbuzz
+            mingw-w64-x86_64-libpng
+            mingw-w64-x86_64-bzip2
+            mingw-w64-x86_64-brotli
+            mingw-w64-x86_64-graphite2
+            zip
+
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --target snake-app -j2
+
+      - name: Package
+        run: |
+          mkdir -p dist/snake-app-windows-x86_64/snake-app
+          cp ./snake-app.exe dist/snake-app-windows-x86_64/snake-app/
+          cp -R assets dist/snake-app-windows-x86_64/snake-app/
+          cd dist/snake-app-windows-x86_64
+          zip -r ../snake-app-windows-x86_64.zip snake-app
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: snake-app-windows-x86_64
+          path: dist/snake-app-windows-x86_64.zip
+
+      - name: Upload release asset
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "${{ github.ref_name }}" >/dev/null 2>&1 \
+            || gh release create "${{ github.ref_name }}" --title "${{ github.ref_name }}" --notes "Snake client release ${{ github.ref_name }}" \
+            || true
+          gh release upload "${{ github.ref_name }}" dist/snake-app-windows-x86_64.zip --clobber

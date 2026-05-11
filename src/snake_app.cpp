@@ -2,10 +2,49 @@
 #include "logging.hpp"
 #include "coroutine.hpp"
 
+#include <array>
+#include <filesystem>
 #include <thread>
+
+#if defined(_WIN32)
+    #define WIN32_LEAN_AND_MEAN
+    #include <windows.h>
+#elif defined(__APPLE__)
+    #include <mach-o/dyld.h>
+#else
+    #include <unistd.h>
+#endif
+
+namespace {
+    std::filesystem::path ExecutableDirectory()
+    {
+#if defined(_WIN32)
+        std::array<char, MAX_PATH> buffer{};
+        const DWORD size = GetModuleFileNameA(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+        if (size == 0 || size == buffer.size())
+            return std::filesystem::current_path();
+        return std::filesystem::path(buffer.data()).parent_path();
+#elif defined(__APPLE__)
+        std::array<char, 4096> buffer{};
+        uint32_t size = static_cast<uint32_t>(buffer.size());
+        if (_NSGetExecutablePath(buffer.data(), &size) != 0)
+            return std::filesystem::current_path();
+        return std::filesystem::weakly_canonical(buffer.data()).parent_path();
+#else
+        std::array<char, 4096> buffer{};
+        const ssize_t size = readlink("/proc/self/exe", buffer.data(), buffer.size() - 1);
+        if (size <= 0)
+            return std::filesystem::current_path();
+        buffer[static_cast<std::size_t>(size)] = '\0';
+        return std::filesystem::path(buffer.data()).parent_path();
+#endif
+    }
+}
 
 int main()
 {
+    std::filesystem::current_path(ExecutableDirectory());
+
     const auto log = Utils::Logging::Logger::Create("CORE");
     Utils::SetDefaultLogger(log);
 

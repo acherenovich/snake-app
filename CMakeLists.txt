@@ -5,10 +5,14 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(CMAKE_FIND_FRAMEWORK NEVER)
+if (NOT APPLE)
+    set(CMAKE_FIND_FRAMEWORK NEVER)
+endif()
 set(BUILD_SHARED_LIBS OFF)
 
 set(SFML_STATIC_LIBRARIES ON)
+set(Boost_USE_STATIC_LIBS ON)
+set(OPENSSL_USE_STATIC_LIBS TRUE)
 add_compile_definitions(SFML_STATIC BOOST_ASIO_NO_DEPRECATED)
 
 set(CMAKE_CXX_FLAGS
@@ -46,8 +50,6 @@ if (WIN32)
             -Wl,-Bdynamic
     )
 
-    set(Boost_USE_STATIC_LIBS ON)
-    set(OPENSSL_USE_STATIC_LIBS TRUE)
 endif()
 
 # ===============================
