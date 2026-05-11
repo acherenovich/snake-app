@@ -124,8 +124,16 @@ namespace Core::App::Render::Pages {
 
     void MainMenu::ProcessTick()
     {
-        if (gameController_->GetMainState() != Game::MainState_Menu)
+        const auto state = gameController_->GetMainState();
+        if (state != Game::MainState_Menu)
+        {
+            lastMainState_ = state;
             return;
+        }
+
+        if (lastMainState_ != Game::MainState_Menu)
+            joinInProgress_ = false;
+        lastMainState_ = state;
 
         const auto now = std::chrono::steady_clock::now();
         if (now - lastUpdate_ >= 10s)
@@ -490,11 +498,11 @@ namespace Core::App::Render::Pages {
             if (idx < total)
             {
                 const auto& s = sessions_[static_cast<size_t>(idx)];
-                l.title->SetText("Lobby #" + std::to_string(s.sessionID_));
+                l.title->SetText("Lobby #" + std::to_string(s.serverID_));
                 l.players->SetText(std::to_string(s.players_) + " players");
                 // Re-bind click with correct session id for this slot
                 l.play->Events().HookEvent(UI::Components::Button::Event::Click) =
-                    std::function([id = s.sessionID_, this] { OnPlaySessionClick(id); });
+                    std::function([id = s.serverID_, this] { OnPlaySessionClick(id); });
                 l.visible = true;
             }
             else
@@ -507,8 +515,13 @@ namespace Core::App::Render::Pages {
         const int pageDisplay = (totalPages == 0) ? 0 : currentPage_ + 1;
         ui.pageInfo->SetText(std::to_string(pageDisplay) + " / " + std::to_string(totalPages));
 
+        ui.playBig->SetEnabled(!joinInProgress_);
         ui.pagePrev->SetEnabled(currentPage_ > 0);
         ui.pageNext->SetEnabled(totalPages > 0 && currentPage_ < totalPages - 1);
+
+        for (auto& l : ui.lobbyRows)
+            if (l.play)
+                l.play->SetEnabled(l.visible && !joinInProgress_);
     }
 
     // ─── Handlers ─────────────────────────────────────────────────────────
@@ -516,14 +529,25 @@ namespace Core::App::Render::Pages {
     void MainMenu::OnPlayClick()
     {
         // Join the first available session, or session #1 as fallback
-        const uint32_t id = sessions_.empty() ? 1u : sessions_.front().sessionID_;
+        const uint32_t id = sessions_.empty() ? 1u : sessions_.front().serverID_;
         OnPlaySessionClick(id);
     }
 
-    void MainMenu::OnPlaySessionClick(const uint32_t id)
+    void MainMenu::OnPlaySessionClick(const uint32_t serverID)
     {
-        gameController_->JoinSession(id) = [=, this](const Game::ActionResult<>& result) {
-            Log()->Debug("OnPlaySessionClick({}): {}", id, result.success ? "success" : "failed");
+        if (joinInProgress_)
+            return;
+
+        joinInProgress_ = true;
+        RebuildPage();
+
+        gameController_->JoinSession(serverID) = [=, this](const Game::ActionResult<>& result) {
+            Log()->Debug("OnPlaySessionClick({}): {}", serverID, result.success ? "success" : "failed");
+            if (!result.success)
+            {
+                joinInProgress_ = false;
+                RebuildPage();
+            }
         };
     }
 

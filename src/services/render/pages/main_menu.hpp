@@ -71,6 +71,8 @@ namespace Core::App::Render::Pages {
 
         std::vector<Session> sessions_;
         int currentPage_ { 0 };
+        bool joinInProgress_ { false };
+        Game::MainState lastMainState_ { Game::MainState_Connecting };
 
         std::chrono::steady_clock::time_point lastUpdate_ =
             std::chrono::steady_clock::time_point(std::chrono::steady_clock::duration::zero());
@@ -96,7 +98,7 @@ namespace Core::App::Render::Pages {
         void RebuildPage();
 
         void OnPlayClick();
-        void OnPlaySessionClick(uint32_t id);
+        void OnPlaySessionClick(uint32_t serverID);
         void OnLogoutClick();
     };
 

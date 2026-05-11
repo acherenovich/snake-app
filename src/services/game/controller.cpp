@@ -158,12 +158,17 @@ namespace Core::App::Game
         Stats stats;
 
         try {
-            for (auto sessionJson: json["body"].as_object()["sessions"].as_array())
+            auto& body = json["body"].as_object();
+
+            if (body.contains("experience") && body["experience"].is_int64())
+                profile_.SetExperience(static_cast<uint32_t>(body["experience"].as_int64()));
+
+            for (auto sessionJson: body["sessions"].as_array())
             {
                 auto sessionVal = sessionJson.as_object();
 
                 Stats::Session session;
-                session.sessionID_ = static_cast<uint32_t>(sessionVal["id"].as_int64());
+                session.serverID_ = static_cast<uint32_t>(sessionVal["id"].as_int64());
                 session.players_   = static_cast<uint32_t>(sessionVal["players"].as_int64());
 
                 if (sessionVal.contains("host") && sessionVal.at("host").is_string())
@@ -219,18 +224,21 @@ namespace Core::App::Game
         co_return {.success = true, .result = leaderboard};
     }
 
-    Utils::Task<ActionResult<>> Controller::JoinSession(uint32_t sessionID)
+    Utils::Task<ActionResult<>> Controller::JoinSession(uint32_t serverID)
     {
-        serverID_ = sessionID;
+        if (mainState_ == MainState_JoiningSession || mainState_ == MainState_Playing)
+            co_return {.error = "already_joining"};
+
+        serverID_ = serverID;
 
         SetMainState(MainState_JoiningSession);
 
-        // Ищем host/port для этой сессии в кэше stats
+        // Ищем host/port для этого игрового сервера в кэше stats
         std::string udpHost = "127.0.0.1";
-        uint16_t    udpPort = static_cast<uint16_t>(7777 + sessionID); // fallback
+        uint16_t    udpPort = static_cast<uint16_t>(7777 + serverID); // fallback
         for (const auto& s : lastStats_.sessions_)
         {
-            if (s.sessionID_ == sessionID && !s.host_.empty() && s.port_ != 0)
+            if (s.serverID_ == serverID && !s.host_.empty() && s.port_ != 0)
             {
                 udpHost = s.host_;
                 udpPort = s.port_;
@@ -239,8 +247,8 @@ namespace Core::App::Game
         }
 
         gameClient_ = GameClient::Create(this, udpHost, udpPort);
-        gameClient_->SetConnectCallback([this, sessionID](uint64_t ssid) {
-            SessionJoined(sessionID, ssid) = [this](const ActionResult<> & result) {
+        gameClient_->SetConnectCallback([this, serverID](uint64_t ssid) {
+            SessionJoined(serverID, ssid) = [this](const ActionResult<> & result) {
                 if (mainState_ != MainState_JoiningSession)
                     return;
 

@@ -58,7 +58,7 @@ namespace Core::App::Game
 
         Utils::Task<ActionResult<std::unordered_map<std::string, uint32_t>>> GetLeaderboard() override;
 
-        Utils::Task<ActionResult<>> JoinSession(uint32_t sessionID) override;
+        Utils::Task<ActionResult<>> JoinSession(uint32_t serverID) override;
 
         Utils::Task<ActionResult<>> SessionJoined(uint32_t serverID, uint64_t ssid);
 

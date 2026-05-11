@@ -31,13 +31,18 @@ namespace Core::App::Game
                 {
                     loggedIn_ = false;
                 }
+
+                void SetExperience(const uint32_t experience)
+                {
+                    experience_ = experience;
+                }
             };
 
             struct Stats
             {
                 struct Session
                 {
-                    uint32_t    sessionID_ = 0;
+                    uint32_t    serverID_ = 0;
                     uint32_t    players_   = 0;
                     std::string host_;
                     uint16_t    port_      = 0;
@@ -62,7 +67,7 @@ namespace Core::App::Game
 
             virtual Utils::Task<ActionResult<std::unordered_map<std::string, uint32_t>>> GetLeaderboard() = 0;
 
-            virtual Utils::Task<ActionResult<>> JoinSession(uint32_t sessionID) = 0;
+            virtual Utils::Task<ActionResult<>> JoinSession(uint32_t serverID) = 0;
 
             [[nodiscard]] virtual GameClient::Shared GetCurrentGameClient() const = 0;
 
