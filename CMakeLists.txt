@@ -12,6 +12,7 @@ set(BUILD_SHARED_LIBS OFF)
 
 set(SFML_STATIC_LIBRARIES ON)
 set(Boost_USE_STATIC_LIBS ON)
+set(Boost_NO_BOOST_CMAKE ON)
 set(OPENSSL_USE_STATIC_LIBS TRUE)
 add_compile_definitions(SFML_STATIC BOOST_ASIO_NO_DEPRECATED)
 
@@ -26,7 +27,11 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR})
 # Platform-specific setup (MSYS2 MinGW64)
 # ===============================
 if (WIN32)
-    set(MSYS2_MINGW64 "C:/msys64/mingw64")
+    if (DEFINED ENV{MINGW_PREFIX})
+        file(TO_CMAKE_PATH "$ENV{MINGW_PREFIX}" MSYS2_MINGW64)
+    else()
+        set(MSYS2_MINGW64 "C:/msys64/mingw64")
+    endif()
 
     list(PREPEND CMAKE_PREFIX_PATH "${MSYS2_MINGW64}")
 
@@ -35,6 +40,9 @@ if (WIN32)
 
     set(OPENSSL_ROOT_DIR "${MSYS2_MINGW64}" CACHE PATH "" FORCE)
     set(BOOST_ROOT       "${MSYS2_MINGW64}" CACHE PATH "" FORCE)
+    set(OPENSSL_INCLUDE_DIR "${MSYS2_MINGW64}/include" CACHE PATH "" FORCE)
+    set(OPENSSL_SSL_LIBRARY "${MSYS2_MINGW64}/lib/libssl.a" CACHE FILEPATH "" FORCE)
+    set(OPENSSL_CRYPTO_LIBRARY "${MSYS2_MINGW64}/lib/libcrypto.a" CACHE FILEPATH "" FORCE)
 
     add_compile_options(-Wa,-mbig-obj)
 

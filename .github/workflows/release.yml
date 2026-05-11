@@ -48,6 +48,7 @@ jobs:
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DBoost_NO_BOOST_CMAKE=ON \
             -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/SFML-install;/opt/homebrew/opt/openssl@3;/opt/homebrew/opt/boost;/opt/homebrew/opt/freetype"
 
       - name: Build
@@ -117,7 +118,13 @@ jobs:
         run: |
           cmake -S . -B build \
             -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBoost_NO_BOOST_CMAKE=ON \
+            -DCMAKE_PREFIX_PATH="$MINGW_PREFIX" \
+            -DOPENSSL_ROOT_DIR="$MINGW_PREFIX" \
+            -DOPENSSL_INCLUDE_DIR="$MINGW_PREFIX/include" \
+            -DOPENSSL_SSL_LIBRARY="$MINGW_PREFIX/lib/libssl.a" \
+            -DOPENSSL_CRYPTO_LIBRARY="$MINGW_PREFIX/lib/libcrypto.a"
 
       - name: Build
         run: cmake --build build --target snake-app -j2
